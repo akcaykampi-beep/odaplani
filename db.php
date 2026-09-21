@@ -91,6 +91,7 @@ function createSchema(PDO $pdo): void
 
 function seedIfEmpty(PDO $pdo): void
 {
+    // Tabloda zaten kayıt varsa ekleme yapmadan çık
     $count = (int) $pdo->query('SELECT COUNT(*) FROM rooms')->fetchColumn();
     if ($count > 0) {
         return;
@@ -103,8 +104,9 @@ function seedIfEmpty(PDO $pdo): void
 
     $seed = require $seedFile;
 
+    // INSERT IGNORE kullanarak oda numarası çakışmalarını engelliyoruz
     $insRoom = $pdo->prepare(
-        'INSERT INTO rooms (no, block, capacity, has_ramp, is_staff, guest_group, notes)
+        'INSERT IGNORE INTO rooms (no, block, capacity, has_ramp, is_staff, guest_group, notes)
          VALUES (:no, :block, :capacity, :has_ramp, :is_staff, :guest_group, :notes)'
     );
     $insGuest = $pdo->prepare(
@@ -112,51 +114,57 @@ function seedIfEmpty(PDO $pdo): void
     );
 
     $pdo->beginTransaction();
-    if (!empty($seed['rooms'])) {
-        foreach ($seed['rooms'] as $r) {
-            $insRoom->execute([
-                ':no'          => $r['no'],
-                ':block'       => $r['block'],
-                ':capacity'    => $r['capacity'],
-                ':has_ramp'    => !empty($r['hasRamp']) ? 1 : 0,
-                ':is_staff'    => !empty($r['isStaff']) ? 1 : 0,
-                ':guest_group' => $r['guestGroup'] ?? null,
-                ':notes'       => $r['notes'] ?? '',
-            ]);
-            $roomId = (int) $pdo->lastInsertId();
-            $sort = 0;
-            if (!empty($r['guests'])) {
-                foreach ($r['guests'] as $g) {
-                    $insGuest->execute([':room_id' => $roomId, ':name' => $g, ':sort' => $sort++]);
+    try {
+        if (!empty($seed['rooms'])) {
+            foreach ($seed['rooms'] as $r) {
+                $insRoom->execute([
+                    ':no'          => $r['no'],
+                    ':block'       => $r['block'],
+                    ':capacity'    => $r['capacity'],
+                    ':has_ramp'    => !empty($r['hasRamp']) ? 1 : 0,
+                    ':is_staff'    => !empty($r['isStaff']) ? 1 : 0,
+                    ':guest_group' => $r['guestGroup'] ?? null,
+                    ':notes'       => $r['notes'] ?? '',
+                ]);
+                $roomId = (int) $pdo->lastInsertId();
+                if ($roomId > 0 && !empty($r['guests'])) {
+                    $sort = 0;
+                    foreach ($r['guests'] as $g) {
+                        $insGuest->execute([':room_id' => $roomId, ':name' => $g, ':sort' => $sort++]);
+                    }
                 }
             }
         }
-    }
 
-    if (!empty($seed['waiting'])) {
-        $insWait = $pdo->prepare(
-            'INSERT INTO waiting_list (title, member_count, needs_ramp, notes)
-             VALUES (:title, :member_count, :needs_ramp, :notes)'
-        );
-        $insWaitM = $pdo->prepare(
-            'INSERT INTO waiting_members (waiting_id, name, sort) VALUES (:waiting_id, :name, :sort)'
-        );
+        if (!empty($seed['waiting'])) {
+            $insWait = $pdo->prepare(
+                'INSERT INTO waiting_list (title, member_count, needs_ramp, notes)
+                 VALUES (:title, :member_count, :needs_ramp, :notes)'
+            );
+            $insWaitM = $pdo->prepare(
+                'INSERT INTO waiting_members (waiting_id, name, sort) VALUES (:waiting_id, :name, :sort)'
+            );
 
-        foreach ($seed['waiting'] as $w) {
-            $insWait->execute([
-                ':title'        => $w['title'],
-                ':member_count' => $w['count'] ?? 1,
-                ':needs_ramp'   => !empty($w['needsRamp']) ? 1 : 0,
-                ':notes'        => $w['notes'] ?? '',
-            ]);
-            $wid = (int) $pdo->lastInsertId();
-            $sort = 0;
-            if (!empty($w['names'])) {
-                foreach ($w['names'] as $n) {
-                    $insWaitM->execute([':waiting_id' => $wid, ':name' => $n, ':sort' => $sort++]);
+            foreach ($seed['waiting'] as $w) {
+                $insWait->execute([
+                    ':title'        => $w['title'],
+                    ':member_count' => $w['count'] ?? 1,
+                    ':needs_ramp'   => !empty($w['needsRamp']) ? 1 : 0,
+                    ':notes'        => $w['notes'] ?? '',
+                ]);
+                $wid = (int) $pdo->lastInsertId();
+                $sort = 0;
+                if (!empty($w['names'])) {
+                    foreach ($w['names'] as $n) {
+                        $insWaitM->execute([':waiting_id' => $wid, ':name' => $n, ':sort' => $sort++]);
+                    }
                 }
             }
         }
+        $pdo->commit();
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
     }
-    $pdo->commit();
 }
