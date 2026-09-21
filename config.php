@@ -5,12 +5,11 @@
  * Kendi sunucunuza / XAMPP / hosting bilgilerinize göre düzenleyin.
  */
 
-// Veritabanı bağlantı ayarları
-define('DB_HOST', '127.0.0.1');
-define('DB_PORT', '3306');
-define('DB_NAME', 'odamatik');
-define('DB_USER', 'root');      // <-- kendi MySQL kullanıcı adınız
-define('DB_PASS', '');          // <-- kendi MySQL şifreniz
+define('DB_HOST', getenv('DB_HOST') ?: 'gondola.proxy.rlwy.net');
+define('DB_PORT', getenv('DB_PORT') ?: '18785');
+define('DB_NAME', getenv('DB_NAME') ?: 'railway');
+define('DB_USER', getenv('DB_USER') ?: 'root');
+define('DB_PASS', getenv('DB_PASS') ?: 'KdQJQbLinFlNMRpCAHZWIEqkrZLWsfnb');
 define('DB_CHARSET', 'utf8mb4');
 
 // Uygulama zaman dilimi
