@@ -41,6 +41,7 @@ function fullState(PDO $pdo): array
 {
     // Odalar + misafirler
     $rooms = $pdo->query('SELECT * FROM rooms ORDER BY no ASC')->fetchAll();
+    if ($rooms === false) $rooms = [];
     $guestsByRoom = [];
     $gstmt = $pdo->query('SELECT room_id, name, tc, bus_code FROM room_guests ORDER BY sort ASC, id ASC');
     foreach ($gstmt as $g) {
@@ -67,6 +68,7 @@ function fullState(PDO $pdo): array
 
     // Bekleme listesi + kişiler
     $waits = $pdo->query('SELECT * FROM waiting_list ORDER BY id ASC')->fetchAll();
+    if ($waits === false) $waits = [];
     $namesByWait = [];
     $wstmt = $pdo->query('SELECT waiting_id, name FROM waiting_members ORDER BY sort ASC, id ASC');
     foreach ($wstmt as $w) {

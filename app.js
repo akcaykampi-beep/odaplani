@@ -55,10 +55,8 @@ function openModal(id) { document.getElementById(id).classList.remove('hidden');
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 function applyFilters() { renderBlocks(); }
 function resetFilters() {
-  document.getElementById('searchInput').value = '';
-  document.getElementById('filterBlock').value = 'ALL';
-  document.getElementById('filterStatus').value = 'ALL';
-  document.getElementById('filterCapacity').value = 'ALL';
+  const ids = { searchInput: '', filterBlock: 'ALL', filterStatus: 'ALL', filterCapacity: 'ALL' };
+  Object.entries(ids).forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.value = v; });
   renderBlocks();
 }
 
@@ -97,10 +95,15 @@ function getBlockColorTheme(blockName) {
 
 function renderBlocks() {
   const container = document.getElementById('blocksContainer');
-  const searchQuery = document.getElementById('searchInput').value.trim().toLowerCase();
-  const filterBlock = document.getElementById('filterBlock').value;
-  const filterStatus = document.getElementById('filterStatus').value;
-  const filterCapacity = document.getElementById('filterCapacity').value;
+  if (!container) return;
+  const searchEl = document.getElementById('searchInput');
+  const blockEl = document.getElementById('filterBlock');
+  const statusEl = document.getElementById('filterStatus');
+  const capEl = document.getElementById('filterCapacity');
+  const searchQuery = searchEl ? searchEl.value.trim().toLowerCase() : '';
+  const filterBlock = blockEl ? blockEl.value : 'ALL';
+  const filterStatus = statusEl ? statusEl.value : 'ALL';
+  const filterCapacity = capEl ? capEl.value : 'ALL';
 
   const grouped = {};
   rooms.forEach(r => { (grouped[r.block] = grouped[r.block] || []).push(r); });
@@ -421,14 +424,18 @@ async function handleCreateRoom(event) {
 function openEditRoom(roomId) {
   const room = rooms.find(r => r.id === roomId);
   if (!room) return;
-  document.getElementById('editRoomId').value = room.id;
-  document.getElementById('editRoomNo').value = room.no;
-  document.getElementById('editRoomCap').value = room.capacity;
-  document.getElementById('editRoomBlock').value = room.block;
-  document.getElementById('editRoomRamp').checked = !!room.hasRamp;
-  document.getElementById('editRoomStaff').checked = !!room.isStaff;
-  closeModal('roomDetailModal');
-  openModal('editRoomModal');
+  const apply = () => {
+    document.getElementById('editRoomId').value = room.id;
+    document.getElementById('editRoomNo').value = room.no;
+    document.getElementById('editRoomCap').value = room.capacity;
+    document.getElementById('editRoomBlock').value = room.block;
+    document.getElementById('editRoomRamp').checked = !!room.hasRamp;
+    document.getElementById('editRoomStaff').checked = !!room.isStaff;
+    closeModal('roomDetailModal');
+    openModal('editRoomModal');
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply, { once: true });
+  else apply();
 }
 
 /* ---------- Misafir (Ad / TC / Otobüs Kodu) Düzenleme ---------- */
@@ -597,20 +604,22 @@ function updateKPIs() {
   const totalGuests = rooms.reduce((a, r) => (!r.isStaff && r.guestGroup) ? a + (r.guests && r.guests.length ? r.guests.length : r.capacity) : a, 0);
   const occupancyRate = totalRooms > 0 ? Math.round(((occupiedRooms + staffRooms) / totalRooms) * 100) : 0;
 
-  document.getElementById('stat-total-rooms').innerText = totalRooms;
-  document.getElementById('stat-total-capacity').innerText = totalCapacity;
-  document.getElementById('stat-occupied-rooms').innerText = occupiedRooms;
-  document.getElementById('stat-occupied-beds').innerText = `/ ${totalCapacity} yatak`;
-  document.getElementById('stat-empty-rooms').innerText = emptyRooms;
-  document.getElementById('stat-total-guests').innerText = totalGuests;
-  document.getElementById('stat-occupancy-rate').innerText = `${occupancyRate}%`;
-  document.getElementById('stat-occupancy-bar').style.width = `${occupancyRate}%`;
+  const setText = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+  setText('stat-total-rooms', totalRooms);
+  setText('stat-total-capacity', totalCapacity);
+  setText('stat-occupied-rooms', occupiedRooms);
+  setText('stat-occupied-beds', `/ ${totalCapacity} yatak`);
+  setText('stat-empty-rooms', emptyRooms);
+  setText('stat-total-guests', totalGuests);
+  setText('stat-occupancy-rate', `${occupancyRate}%`);
+  const bar = document.getElementById('stat-occupancy-bar'); if (bar) bar.style.width = `${occupancyRate}%`;
   const pg = document.getElementById('printGuestCount');
   if (pg) pg.innerText = totalGuests;
 }
 
 function showToast(message, type = 'info') {
   const container = document.getElementById('toastContainer');
+  if (!container) { if (type === 'error') alert(message); return; }
   const toast = document.createElement('div');
   let bg = "bg-slate-900 text-white", icon = "fa-info-circle text-blue-400";
   if (type === 'success') { bg = "bg-emerald-900 text-emerald-50 border border-emerald-700"; icon = "fa-circle-check text-emerald-400"; }

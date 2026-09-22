@@ -222,9 +222,11 @@ function seedIfEmpty(PDO $pdo): void
             }
         }
         $pdo->commit();
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
+        // Hata loglansın; sessizce yutulmasın (canlıda error_log)
+        error_log('seedIfEmpty hata: ' . $e->getMessage());
     }
 }
