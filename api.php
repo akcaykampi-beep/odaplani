@@ -42,9 +42,13 @@ function fullState(PDO $pdo): array
     // Odalar + misafirler
     $rooms = $pdo->query('SELECT * FROM rooms ORDER BY no ASC')->fetchAll();
     $guestsByRoom = [];
-    $gstmt = $pdo->query('SELECT room_id, name FROM room_guests ORDER BY sort ASC, id ASC');
+    $gstmt = $pdo->query('SELECT room_id, name, tc, bus_code FROM room_guests ORDER BY sort ASC, id ASC');
     foreach ($gstmt as $g) {
-        $guestsByRoom[$g['room_id']][] = $g['name'];
+        $guestsByRoom[$g['room_id']][] = [
+            'name'    => $g['name'],
+            'tc'      => $g['tc'] ?? '',
+            'busCode' => $g['bus_code'] ?? '',
+        ];
     }
 
     $roomsOut = array_map(function ($r) use ($guestsByRoom) {
@@ -88,16 +92,54 @@ function okState(PDO $pdo, string $message = ''): void
     jsonOut(['ok' => true, 'message' => $message, 'state' => fullState($pdo)]);
 }
 
-/** Bir odanın misafir listesini toptan yeniden yazar. */
-function setRoomGuests(PDO $pdo, int $roomId, array $names): void
+/** Oda numarasına göre varsayılan otobüs kodu üretir (db.php ile aynı mantık). */
+function defaultBusCodeApi(int $roomNo): string
 {
+    if ($roomNo <= 43) {
+        $seq = ['A-1', 'A-2', 'A-3'];
+        return $seq[($roomNo - 1) % 3];
+    }
+    $vipAlt = ['vip alt 1', 'vip alt 2', 'vip alt 3', 'vip alt 4', 'vip alt 5', 'vip alt 7', 'vip alt 8'];
+    $vip    = ['vip 1', 'vip 2', 'vip 3', 'vip 4'];
+    $all    = array_merge($vipAlt, $vip);
+    $idx    = $roomNo - 44;
+    if ($idx < 0) $idx = 0;
+    return $all[$idx % count($all)];
+}
+
+/**
+ * Bir odanın misafir listesini toptan yeniden yazar.
+ * $guests öğeleri düz metin (isim) veya ['name','tc','busCode'] dizisi olabilir.
+ */
+function setRoomGuests(PDO $pdo, int $roomId, array $guests): void
+{
+    // Odanın numarasını varsayılan otobüs kodu için al
+    $rs = $pdo->prepare('SELECT no FROM rooms WHERE id = ?');
+    $rs->execute([$roomId]);
+    $roomNo = (int) ($rs->fetchColumn() ?: 0);
+    $defBus = $roomNo > 0 ? defaultBusCodeApi($roomNo) : '';
+
     $pdo->prepare('DELETE FROM room_guests WHERE room_id = ?')->execute([$roomId]);
-    $ins = $pdo->prepare('INSERT INTO room_guests (room_id, name, sort) VALUES (?,?,?)');
+    $ins = $pdo->prepare('INSERT INTO room_guests (room_id, name, tc, bus_code, sort) VALUES (?,?,?,?,?)');
     $sort = 0;
-    foreach ($names as $n) {
-        $n = trim((string) $n);
-        if ($n === '') continue;
-        $ins->execute([$roomId, $n, $sort++]);
+    foreach ($guests as $g) {
+        if (is_array($g)) {
+            $name = trim((string) ($g['name'] ?? ''));
+            $tc   = trim((string) ($g['tc'] ?? ''));
+            $bus  = trim((string) ($g['busCode'] ?? $g['bus'] ?? ''));
+        } else {
+            $name = trim((string) $g);
+            $tc   = '';
+            $bus  = '';
+        }
+        if ($name === '') continue;
+        $ins->execute([
+            $roomId,
+            $name,
+            $tc !== '' ? $tc : null,
+            $bus !== '' ? $bus : $defBus,
+            $sort++,
+        ]);
     }
 }
 
@@ -216,6 +258,28 @@ try {
             $pdo->prepare('UPDATE rooms SET guest_group=NULL, notes=? WHERE id=?')->execute(['', $id]);
             setRoomGuests($pdo, $id, []);
             okState($pdo, "Oda {$room['no']} boşaltıldı.");
+            break;
+        }
+
+        /* === MİSAFİR BİLGİLERİNİ GÜNCELLE (isim / TC / otobüs kodu) === */
+        case 'update_guests': {
+            $id   = (int) ($req['id'] ?? 0);
+            $room = getRoom($pdo, $id);
+            if (!$room) fail('Oda bulunamadı.', 404);
+
+            $guests = $req['guests'] ?? [];
+            if (!is_array($guests)) $guests = [];
+
+            // En az bir geçerli isim olmalı
+            $hasName = false;
+            foreach ($guests as $g) {
+                $nm = is_array($g) ? trim((string) ($g['name'] ?? '')) : trim((string) $g);
+                if ($nm !== '') { $hasName = true; break; }
+            }
+            if (!$hasName) fail('En az bir misafir ismi girilmelidir.');
+
+            setRoomGuests($pdo, $id, $guests);
+            okState($pdo, "Oda {$room['no']} misafir bilgileri güncellendi.");
             break;
         }
 

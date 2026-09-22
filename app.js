@@ -8,6 +8,15 @@ let selectedRoomId = null;
 
 const API = 'api.php';
 
+/* Otobüs kodu seçenekleri (talep edilen liste) */
+const BUS_CODES = ['A-1', 'A-2', 'A-3', 'vip alt 1', 'vip alt 2', 'vip alt 3', 'vip alt 4', 'vip alt 5', 'vip alt 7', 'vip alt 8', 'vip 1', 'vip 2', 'vip 3', 'vip 4'];
+
+/* Misafir kaydı hem düz metin ("Ad Soyad") hem de {name,tc,busCode} olabilir.
+   Aşağıdaki yardımcılar her iki biçimi de güvenle okur. */
+function guestName(g) { return (g && typeof g === 'object') ? (g.name || '') : (g || ''); }
+function guestTc(g)   { return (g && typeof g === 'object') ? (g.tc || '') : ''; }
+function guestBus(g)  { return (g && typeof g === 'object') ? (g.busCode || '') : ''; }
+
 /* Sunucuya istek atan yardımcı. Yanıttaki güncel durumu belleğe alır. */
 async function apiCall(action, payload = {}) {
   try {
@@ -117,7 +126,11 @@ function renderBlocks() {
       if (searchQuery) {
         const inNo = room.no.toString().includes(searchQuery);
         const inGroup = (room.guestGroup || '').toLowerCase().includes(searchQuery);
-        const inGuests = (room.guests || []).some(g => g.toLowerCase().includes(searchQuery));
+        const inGuests = (room.guests || []).some(g =>
+          (guestName(g)).toLowerCase().includes(searchQuery) ||
+          (guestTc(g)).toLowerCase().includes(searchQuery) ||
+          (guestBus(g)).toLowerCase().includes(searchQuery)
+        );
         const inNotes = (room.notes || '').toLowerCase().includes(searchQuery);
         if (!inNo && !inGroup && !inGuests && !inNotes) return false;
       }
@@ -186,7 +199,18 @@ function createRoomCard(room) {
   } else if (isOccupied) {
     const guests = room.guests && room.guests.length > 0 ? room.guests : [room.guestGroup];
     guestListHtml = `<div class="divide-y divide-amber-200/70 border border-amber-300/80 rounded-lg overflow-hidden bg-white/90 shadow-2xs my-1">
-      ${guests.map(g => `<div class="px-2.5 py-1 text-xs font-semibold text-slate-800 truncate tracking-tight hover:bg-amber-50/80">${escapeHtml(g)}</div>`).join('')}
+      ${guests.map(g => {
+        const nm = escapeHtml(guestName(g));
+        const tc = escapeHtml(guestTc(g));
+        const bus = escapeHtml(guestBus(g));
+        return `<div class="px-2.5 py-1 hover:bg-amber-50/80">
+          <div class="text-xs font-semibold text-slate-800 truncate tracking-tight">${nm}</div>
+          <div class="flex items-center justify-between gap-1 mt-0.5">
+            <span class="text-[10px] text-slate-500 font-mono">${tc ? '<i class="fa-solid fa-id-card text-[9px] mr-0.5"></i>' + tc : '<span class="italic text-slate-300">TC yok</span>'}</span>
+            ${bus ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 whitespace-nowrap"><i class="fa-solid fa-bus text-[8px] mr-0.5"></i>${bus}</span>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
     </div>`;
   } else {
     guestListHtml = `<div class="py-5 text-center flex flex-col items-center justify-center">
@@ -266,14 +290,26 @@ function openRoomDetail(roomId) {
         </div>
         <p class="text-base font-bold text-slate-800 mb-3">${escapeHtml(room.guestGroup)}</p>
         <div class="space-y-1.5">
-          <label class="text-xs font-semibold text-slate-600 uppercase">Kalan Misafir Listesi:</label>
+          <label class="text-xs font-semibold text-slate-600 uppercase">Kalan Misafir Listesi (Ad / TC / Otobüs):</label>
           <div class="bg-white rounded-lg border border-amber-200 divide-y divide-slate-100 overflow-hidden text-sm">
-            ${room.guests.map((g, i) => `<div class="px-3 py-2 flex items-center justify-between text-slate-700"><span class="font-medium">${i + 1}. ${escapeHtml(g)}</span></div>`).join('')}
+            ${room.guests.map((g, i) => {
+              const nm = escapeHtml(guestName(g));
+              const tc = escapeHtml(guestTc(g));
+              const bus = escapeHtml(guestBus(g));
+              return `<div class="px-3 py-2 text-slate-700">
+                <div class="flex items-center justify-between">
+                  <span class="font-medium">${i + 1}. ${nm}</span>
+                  ${bus ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800"><i class="fa-solid fa-bus mr-0.5"></i>${bus}</span>` : '<span class="text-[10px] text-slate-300 italic">otobüs yok</span>'}
+                </div>
+                <div class="text-[11px] text-slate-500 font-mono mt-0.5">${tc ? '<i class="fa-solid fa-id-card mr-1"></i>' + tc : '<span class="italic text-slate-300">TC girilmedi</span>'}</div>
+              </div>`;
+            }).join('')}
           </div>
         </div>
         ${room.notes ? `<div class="mt-3 text-xs text-slate-600 bg-white p-2.5 rounded-lg border border-amber-200"><strong>Not:</strong> ${escapeHtml(room.notes)}</div>` : ''}
       </div>`;
     actions.innerHTML = `
+      <button onclick="openEditGuests(${room.id})" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition flex items-center gap-2"><i class="fa-solid fa-id-card"></i> Misafir / TC / Otobüs Düzenle</button>
       <button onclick="evictRoom(${room.id})" class="px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold transition flex items-center gap-2"><i class="fa-solid fa-door-closed"></i> Odadan Çıkış (Boşalt)</button>
       ${manageButtons}`;
   } else if (room.isStaff) {
@@ -393,6 +429,71 @@ function openEditRoom(roomId) {
   document.getElementById('editRoomStaff').checked = !!room.isStaff;
   closeModal('roomDetailModal');
   openModal('editRoomModal');
+}
+
+/* ---------- Misafir (Ad / TC / Otobüs Kodu) Düzenleme ---------- */
+
+/* Otobüs kodu <select> seçeneklerini üretir; mevcut kod listede yoksa da eklenir */
+function busCodeOptions(selected) {
+  const sel = selected || '';
+  let opts = '<option value="">— Otobüs seç —</option>';
+  const list = BUS_CODES.slice();
+  if (sel && !list.includes(sel)) list.push(sel);
+  opts += list.map(c => `<option value="${escapeHtml(c)}" ${c === sel ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
+  return opts;
+}
+
+/* Tek bir misafir satırı (input alanları) üretir */
+function guestRowHtml(name, tc, bus) {
+  return `<div class="guest-row grid grid-cols-12 gap-2 items-center">
+    <input type="text" value="${escapeHtml(name || '')}" placeholder="Ad Soyad" class="guest-name col-span-5 px-2.5 py-1.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm" />
+    <input type="text" value="${escapeHtml(tc || '')}" placeholder="TC Kimlik No" inputmode="numeric" maxlength="11" class="guest-tc col-span-3 px-2.5 py-1.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-mono" />
+    <select class="guest-bus col-span-3 px-2 py-1.5 rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none text-xs">${busCodeOptions(bus)}</select>
+    <button type="button" onclick="this.closest('.guest-row').remove()" class="col-span-1 text-rose-500 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50 transition" title="Bu kişiyi sil"><i class="fa-solid fa-trash text-xs"></i></button>
+  </div>`;
+}
+
+function addGuestRow(name = '', tc = '', bus = '') {
+  const container = document.getElementById('editGuestsContainer');
+  if (!container) return;
+  container.insertAdjacentHTML('beforeend', guestRowHtml(name, tc, bus));
+}
+
+/* Misafir düzenleme modalını aç */
+function openEditGuests(roomId) {
+  const room = rooms.find(r => r.id === roomId);
+  if (!room) return;
+  document.getElementById('editGuestsRoomId').value = room.id;
+  document.getElementById('editGuestsRoomTitle').innerText = `Oda ${room.no} — ${room.guestGroup || ''}`;
+
+  const container = document.getElementById('editGuestsContainer');
+  container.innerHTML = '';
+  const guests = (room.guests && room.guests.length > 0) ? room.guests : [''];
+  guests.forEach(g => addGuestRow(guestName(g), guestTc(g), guestBus(g)));
+
+  closeModal('roomDetailModal');
+  openModal('editGuestsModal');
+}
+
+async function handleUpdateGuests(event) {
+  event.preventDefault();
+  const roomId = parseInt(document.getElementById('editGuestsRoomId').value, 10);
+  const rowsEl = document.querySelectorAll('#editGuestsContainer .guest-row');
+  const guests = [];
+  rowsEl.forEach(row => {
+    const name = row.querySelector('.guest-name').value.trim();
+    const tc = row.querySelector('.guest-tc').value.trim();
+    const busCode = row.querySelector('.guest-bus').value;
+    if (name) guests.push({ name, tc, busCode });
+  });
+  if (guests.length === 0) { showToast('En az bir misafir ismi girmelisiniz.', 'error'); return; }
+
+  const d = await apiCall('update_guests', { id: roomId, guests });
+  if (d) {
+    closeModal('editGuestsModal');
+    renderAll();
+    showToast(d.message, 'success');
+  }
 }
 
 async function handleUpdateRoom(event) {

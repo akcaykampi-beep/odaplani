@@ -298,6 +298,41 @@
     </div>
   </div>
 
+  <!-- Misafir (Ad / TC / Otobüs Kodu) Düzenle Modal -->
+  <div id="editGuestsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-white rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-100 max-h-[88vh] flex flex-col">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center"><i class="fa-solid fa-id-card"></i></div>
+          <div>
+            <h3 class="font-bold text-slate-800">Misafir Bilgilerini Düzenle</h3>
+            <p id="editGuestsRoomTitle" class="text-xs text-slate-500">-</p>
+          </div>
+        </div>
+        <button onclick="closeModal('editGuestsModal')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <form onsubmit="handleUpdateGuests(event)" class="flex flex-col flex-1 overflow-hidden">
+        <input type="hidden" id="editGuestsRoomId" />
+        <div class="px-6 pt-4">
+          <div class="grid grid-cols-12 gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+            <span class="col-span-5">Ad Soyad</span>
+            <span class="col-span-3">TC Kimlik No</span>
+            <span class="col-span-3">Otobüs Kodu</span>
+            <span class="col-span-1"></span>
+          </div>
+        </div>
+        <div id="editGuestsContainer" class="px-6 space-y-2 overflow-y-auto flex-1"></div>
+        <div class="px-6 py-3">
+          <button type="button" onclick="addGuestRow()" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-dashed border-indigo-400 text-indigo-700 hover:bg-indigo-50 transition"><i class="fa-solid fa-plus text-xs"></i> Kişi Ekle</button>
+        </div>
+        <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" onclick="closeModal('editGuestsModal')" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition font-medium">İptal</button>
+          <button type="submit" class="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition shadow-sm">Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Bekleme Listesi Modal -->
   <div id="waitingListModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
     <div class="bg-white rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden border border-slate-100 max-h-[85vh] flex flex-col">

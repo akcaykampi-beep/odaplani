@@ -34,6 +34,42 @@ function db(): PDO
     return $pdo;
 }
 
+/** Bir tabloda sütun yoksa güvenle ekler (eski kurulumlar için migration). */
+function ensureColumn(PDO $pdo, string $table, string $column, string $alterSql): void
+{
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+        );
+        $stmt->execute([$table, $column]);
+        if ((int) $stmt->fetchColumn() === 0) {
+            $pdo->exec($alterSql);
+        }
+    } catch (Throwable $e) {
+        // Sessizce geç: sütun zaten varsa veya yetki yoksa uygulama yine de çalışır
+    }
+}
+
+/**
+ * Oda numarasına göre varsayılan otobüs kodu üretir.
+ * 1-43: A serisi (A-1, A-2, A-3 dönüşümlü)
+ * 44 ve sonrası: vip alt sıralaması (1,2,3,4,5,7,8 — "6" atlanır), tükenince vip 1..4
+ */
+function defaultBusCode(int $roomNo): string
+{
+    if ($roomNo <= 43) {
+        $seq = ['A-1', 'A-2', 'A-3'];
+        return $seq[($roomNo - 1) % 3];
+    }
+    $vipAlt = ['vip alt 1', 'vip alt 2', 'vip alt 3', 'vip alt 4', 'vip alt 5', 'vip alt 7', 'vip alt 8'];
+    $vip    = ['vip 1', 'vip 2', 'vip 3', 'vip 4'];
+    $all    = array_merge($vipAlt, $vip);
+    $idx    = $roomNo - 44;
+    if ($idx < 0) $idx = 0;
+    return $all[$idx % count($all)];
+}
+
 function createSchema(PDO $pdo): void
 {
     // Odalar
@@ -58,11 +94,17 @@ function createSchema(PDO $pdo): void
             id       INT AUTO_INCREMENT PRIMARY KEY,
             room_id  INT NOT NULL,
             name     VARCHAR(191) NOT NULL,
+            tc       VARCHAR(20) DEFAULT NULL,
+            bus_code VARCHAR(40) DEFAULT NULL,
             sort     INT NOT NULL DEFAULT 0,
             CONSTRAINT fk_guest_room FOREIGN KEY (room_id)
                 REFERENCES rooms(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci
     ");
+
+    // Mevcut (eski) kurulumlar için sütunları güvenle ekle (migration)
+    ensureColumn($pdo, 'room_guests', 'tc',       "ALTER TABLE room_guests ADD COLUMN tc VARCHAR(20) DEFAULT NULL AFTER name");
+    ensureColumn($pdo, 'room_guests', 'bus_code', "ALTER TABLE room_guests ADD COLUMN bus_code VARCHAR(40) DEFAULT NULL AFTER tc");
 
     // Bekleme listesi (aileler / gruplar)
     $pdo->exec("
@@ -110,7 +152,7 @@ function seedIfEmpty(PDO $pdo): void
          VALUES (:no, :block, :capacity, :has_ramp, :is_staff, :guest_group, :notes)'
     );
     $insGuest = $pdo->prepare(
-        'INSERT INTO room_guests (room_id, name, sort) VALUES (:room_id, :name, :sort)'
+        'INSERT INTO room_guests (room_id, name, tc, bus_code, sort) VALUES (:room_id, :name, :tc, :bus_code, :sort)'
     );
 
     $pdo->beginTransaction();
@@ -129,8 +171,26 @@ function seedIfEmpty(PDO $pdo): void
                 $roomId = (int) $pdo->lastInsertId();
                 if ($roomId > 0 && !empty($r['guests'])) {
                     $sort = 0;
+                    $busCode = defaultBusCode((int) $r['no']);
                     foreach ($r['guests'] as $g) {
-                        $insGuest->execute([':room_id' => $roomId, ':name' => $g, ':sort' => $sort++]);
+                        // Misafir dizi (isim/tc/bus) veya düz metin (isim) olabilir
+                        if (is_array($g)) {
+                            $gName = trim((string) ($g['name'] ?? ''));
+                            $gTc   = trim((string) ($g['tc'] ?? ''));
+                            $gBus  = trim((string) ($g['bus'] ?? $g['busCode'] ?? ''));
+                        } else {
+                            $gName = trim((string) $g);
+                            $gTc   = '';
+                            $gBus  = '';
+                        }
+                        if ($gName === '') continue;
+                        $insGuest->execute([
+                            ':room_id'  => $roomId,
+                            ':name'     => $gName,
+                            ':tc'       => $gTc !== '' ? $gTc : null,
+                            ':bus_code' => $gBus !== '' ? $gBus : $busCode,
+                            ':sort'     => $sort++,
+                        ]);
                     }
                 }
             }
