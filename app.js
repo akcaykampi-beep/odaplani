@@ -84,6 +84,8 @@ function populateBlockDropdown() {
 
 function getBlockColorTheme(blockName) {
   const name = (blockName || '').toUpperCase();
+  if (name.includes('VIP'))
+    return { border:'border-yellow-300', bgHeader:'bg-yellow-100/90 text-yellow-900 border-yellow-200', accent:'bg-yellow-50 text-yellow-900' };
   if (name.includes('BEJ') || name.includes('SARI'))
     return { border:'border-amber-300', bgHeader:'bg-amber-100/80 text-amber-900 border-amber-200', accent:'bg-amber-50 text-amber-900' };
   if (name.includes('PEMBE'))
@@ -177,10 +179,11 @@ function renderBlocks() {
   }
 }
 
-function createRoomCard(room) {
   const card = document.createElement('div');
   card.className = "room-card relative bg-white rounded-xl border transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between overflow-hidden ";
-
+  const isVipRoom = (room.block || '').toUpperCase().includes('VIP');
+  const vipName = (isVipRoom && room.notes) ? String(room.notes).trim() : '';
+  const displayTitle = (isVipRoom && vipName) ? vipName : `Oda ${room.no}`;
   const isOccupied = !room.isStaff && room.guestGroup && room.guestGroup.trim() !== '';
   const isStaff = room.isStaff;
   let statusColor = "", statusText = "", topBarColor = "";
@@ -226,8 +229,8 @@ function createRoomCard(room) {
     <div class="p-3">
       <div class="flex items-start justify-between gap-1 pb-2 border-b border-slate-100">
         <div class="flex items-center gap-1.5">
-          <div class="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-black text-sm shadow-xs">${room.no}</div>
-          <div><span class="text-[11px] font-bold text-slate-700 block leading-tight">Oda ${room.no}</span><span class="text-[10px] text-slate-500 font-medium">${room.capacity} Kişilik</span></div>
+          <div class="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-black text-[10px] shadow-xs leading-none text-center px-0.5">${isVipRoom && vipName ? escapeHtml(vipName) : room.no}</div>
+          <div><span class="text-[11px] font-bold text-slate-700 block leading-tight">${escapeHtml(displayTitle)}</span><span class="text-[10px] text-slate-500 font-medium">${room.capacity} Kişilik</span></div>
         </div>
         <div class="flex flex-col items-end gap-1">
           <span class="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${statusColor}">${statusText}</span>
@@ -243,7 +246,7 @@ function createRoomCard(room) {
       </div>
     </div>
     <div class="px-3 py-1.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
-      <span class="truncate max-w-[130px]">${room.notes ? escapeHtml(room.notes) : 'Detaylar için tıkla'}</span>
+      <span class="truncate max-w-[130px]">${isVipRoom && vipName ? escapeHtml(vipName) : (room.notes ? escapeHtml(room.notes) : 'Detaylar için tıkla')}</span>
       <i class="fa-solid fa-arrow-up-right-from-square opacity-60"></i>
     </div>`;
 

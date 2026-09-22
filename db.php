@@ -47,44 +47,52 @@ function migrateRoomsToVipLayout(PDO $pdo): void
         $cols = $pdo->query('SHOW COLUMNS FROM rooms')->fetchAll(PDO::FETCH_COLUMN);
         if (empty($cols)) return;
 
-        // Zaten VIP düzende mi? (44 nolu oda VIP bloğundaysa migration yapılmış demektir)
+        // 2b) Önceki ayrı-blok VIP'leri (VIP ALT 1, VIP 1...) tek blok 'VIP ODALAR' altında topla
+        try {
+            $pdo->exec("UPDATE rooms SET block = 'VIP ODALAR', notes = CASE no
+                WHEN 44 THEN 'VIP ALT 1' WHEN 45 THEN 'VIP ALT 2' WHEN 46 THEN 'VIP ALT 3' WHEN 47 THEN 'VIP ALT 4'
+                WHEN 48 THEN 'VIP ALT 5' WHEN 49 THEN 'VIP ALT 7' WHEN 50 THEN 'VIP ALT 8'
+                WHEN 51 THEN 'VIP 1' WHEN 52 THEN 'VIP 2' WHEN 53 THEN 'VIP 3' WHEN 54 THEN 'VIP 4'
+                ELSE notes END
+                WHERE no >= 44 AND no <= 54 AND block <> 'VIP ODALAR'");
+        } catch (Throwable $e) {
+            error_log('vip migrate 2b hata: ' . $e->getMessage());
+        }
+
+        // Zaten tek-blok VIP düzende mi?
         $chk = $pdo->prepare('SELECT block FROM rooms WHERE no = 44 LIMIT 1');
         $chk->execute();
         $row44 = $chk->fetch();
-        if ($row44 && stripos((string) $row44['block'], 'vip') !== false) {
+        if ($row44 && (string) $row44['block'] === 'VIP ODALAR') {
             return;
         }
 
         // 1) 43 sonrası odaları (eski 44-50) sil — misafirleri CASCADE ile silinir
         $pdo->exec('DELETE FROM rooms WHERE no > 43');
 
-        // 2) Kalan odalardaki vip otobüs kodlarını A serisine çevir
-        $busCols = $pdo->query('SHOW COLUMNS FROM room_guests')->fetchAll(PDO::FETCH_COLUMN);
-        if (!empty($busCols) && in_array('bus_code', (array) $busCols, true)) {
-            $fix = $pdo->query("SELECT id FROM room_guests WHERE bus_code LIKE 'vip%'");
-            if ($fix) {
-                $upd = $pdo->prepare('UPDATE room_guests SET bus_code = ? WHERE id = ?');
-                $seq = ['A-1', 'A-2', 'A-3'];
-                $i = 0;
-                foreach ($fix as $g) {
-                    $upd->execute([$seq[$i % 3], $g['id']]);
-                    $i++;
-                }
+        // 2a) vip bus_code -> A-1/A-2/A-3
+        $fix = $pdo->query("SELECT id FROM room_guests WHERE bus_code LIKE 'vip%'");
+        if ($fix) {
+            $upd = $pdo->prepare('UPDATE room_guests SET bus_code = ? WHERE id = ?');
+            $seq = ['A-1', 'A-2', 'A-3'];
+            $i = 0;
+            foreach ($fix as $g) {
+                $upd->execute([$seq[$i % 3], $g['id']]);
+                $i++;
             }
         }
 
-        // 3) 11 VIP odayı ekle (yoksa)
         $vipRooms = [
             44 => 'VIP ALT 1', 45 => 'VIP ALT 2', 46 => 'VIP ALT 3', 47 => 'VIP ALT 4',
             48 => 'VIP ALT 5', 49 => 'VIP ALT 7', 50 => 'VIP ALT 8',
             51 => 'VIP 1', 52 => 'VIP 2', 53 => 'VIP 3', 54 => 'VIP 4',
         ];
         $ins = $pdo->prepare(
-            'INSERT IGNORE INTO rooms (no, block, capacity, has_ramp, is_staff, guest_group, notes)
-             VALUES (:no, :block, 2, 0, 0, NULL, :notes)'
+            "INSERT IGNORE INTO rooms (no, block, capacity, has_ramp, is_staff, guest_group, notes)
+             VALUES (:no, :block, 2, 0, 0, NULL, :notes)"
         );
-        foreach ($vipRooms as $no => $block) {
-            $ins->execute([':no' => $no, ':block' => $block, ':notes' => 'VIP']);
+        foreach ($vipRooms as $no => $vipName) {
+            $ins->execute([':no' => $no, ':block' => 'VIP ODALAR', ':notes' => $vipName]);
         }
     } catch (Throwable $e) {
         error_log('migrateRoomsToVipLayout hata: ' . $e->getMessage());
