@@ -30,8 +30,65 @@ function db(): PDO
     // Tabloları oluştur & gerekiyorsa örnek verileri yükle
     createSchema($pdo);
     seedIfEmpty($pdo);
+    migrateRoomsToVipLayout($pdo);
 
     return $pdo;
+}
+
+/**
+ * Mevcut kurulumu VIP oda düzenine geçirir (tek seferlik migration):
+ * - 43 sonrası tüm odaları siler (no > 43)
+ * - vip otobüs kodlarını A-1/A-2/A-3'e çevirir
+ * - 44-54 arası 11 VIP odayı (vip alt 1-5, vip alt 7-8, vip 1-4) eksikse ekler
+ */
+function migrateRoomsToVipLayout(PDO $pdo): void
+{
+    try {
+        $cols = $pdo->query('SHOW COLUMNS FROM rooms')->fetchAll(PDO::FETCH_COLUMN);
+        if (empty($cols)) return;
+
+        // Zaten VIP düzende mi? (44 nolu oda VIP bloğundaysa migration yapılmış demektir)
+        $chk = $pdo->prepare('SELECT block FROM rooms WHERE no = 44 LIMIT 1');
+        $chk->execute();
+        $row44 = $chk->fetch();
+        if ($row44 && stripos((string) $row44['block'], 'vip') !== false) {
+            return;
+        }
+
+        // 1) 43 sonrası odaları (eski 44-50) sil — misafirleri CASCADE ile silinir
+        $pdo->exec('DELETE FROM rooms WHERE no > 43');
+
+        // 2) Kalan odalardaki vip otobüs kodlarını A serisine çevir
+        $busCols = $pdo->query('SHOW COLUMNS FROM room_guests')->fetchAll(PDO::FETCH_COLUMN);
+        if (!empty($busCols) && in_array('bus_code', (array) $busCols, true)) {
+            $fix = $pdo->query("SELECT id FROM room_guests WHERE bus_code LIKE 'vip%'");
+            if ($fix) {
+                $upd = $pdo->prepare('UPDATE room_guests SET bus_code = ? WHERE id = ?');
+                $seq = ['A-1', 'A-2', 'A-3'];
+                $i = 0;
+                foreach ($fix as $g) {
+                    $upd->execute([$seq[$i % 3], $g['id']]);
+                    $i++;
+                }
+            }
+        }
+
+        // 3) 11 VIP odayı ekle (yoksa)
+        $vipRooms = [
+            44 => 'VIP ALT 1', 45 => 'VIP ALT 2', 46 => 'VIP ALT 3', 47 => 'VIP ALT 4',
+            48 => 'VIP ALT 5', 49 => 'VIP ALT 7', 50 => 'VIP ALT 8',
+            51 => 'VIP 1', 52 => 'VIP 2', 53 => 'VIP 3', 54 => 'VIP 4',
+        ];
+        $ins = $pdo->prepare(
+            'INSERT IGNORE INTO rooms (no, block, capacity, has_ramp, is_staff, guest_group, notes)
+             VALUES (:no, :block, 2, 0, 0, NULL, :notes)'
+        );
+        foreach ($vipRooms as $no => $block) {
+            $ins->execute([':no' => $no, ':block' => $block, ':notes' => 'VIP']);
+        }
+    } catch (Throwable $e) {
+        error_log('migrateRoomsToVipLayout hata: ' . $e->getMessage());
+    }
 }
 
 /** Bir tabloda sütun yoksa güvenle ekler (eski kurulumlar için migration). */
@@ -51,27 +108,11 @@ function ensureColumn(PDO $pdo, string $table, string $column, string $alterSql)
     }
 }
 
-/**
- * Oda numarasına göre varsayılan otobüs kodu üretir.
- * 1-43: A serisi (A-1, A-2, A-3 dönüşümlü)
- * 44: vip alt 1, 45: vip alt 2, 46: vip alt 3, 47: vip alt 4,
- * 48: vip alt 5, 49: vip alt 7 ("6" atlanır), 50: vip alt 8,
- * 51: vip 1, 52: vip 2, 53: vip 3, 54: vip 4, 55+: vip 1..4 dönüşümlü
- */
+/** Oda numarasına göre varsayılan otobüs kodu — sadece A-1, A-2, A-3 döner. */
 function defaultBusCode(int $roomNo): string
 {
-    if ($roomNo <= 43) {
-        $seq = ['A-1', 'A-2', 'A-3'];
-        return $seq[($roomNo - 1) % 3];
-    }
-    $vipAlt = ['vip alt 1', 'vip alt 2', 'vip alt 3', 'vip alt 4', 'vip alt 5', 'vip alt 7', 'vip alt 8'];
-    $vip    = ['vip 1', 'vip 2', 'vip 3', 'vip 4'];
-    $idx = $roomNo - 44;
-    if ($idx < 0) $idx = 0;
-    if ($idx < count($vipAlt)) {
-        return $vipAlt[$idx];
-    }
-    return $vip[($idx - count($vipAlt)) % count($vip)];
+    $seq = ['A-1', 'A-2', 'A-3'];
+    return $seq[($roomNo - 1) % count($seq)];
 }
 
 function createSchema(PDO $pdo): void

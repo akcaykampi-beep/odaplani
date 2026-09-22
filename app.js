@@ -8,8 +8,8 @@ let selectedRoomId = null;
 
 const API = 'api.php';
 
-/* Otobüs kodu seçenekleri (talep edilen liste) */
-const BUS_CODES = ['A-1', 'A-2', 'A-3', 'vip alt 1', 'vip alt 2', 'vip alt 3', 'vip alt 4', 'vip alt 5', 'vip alt 7', 'vip alt 8', 'vip 1', 'vip 2', 'vip 3', 'vip 4'];
+/* Otobüs kodu seçenekleri — sadece A-1, A-2, A-3 */
+const BUS_CODES = ['A-1', 'A-2', 'A-3'];
 
 /* Misafir kaydı hem düz metin ("Ad Soyad") hem de {name,tc,busCode} olabilir.
    Aşağıdaki yardımcılar her iki biçimi de güvenle okur. */
