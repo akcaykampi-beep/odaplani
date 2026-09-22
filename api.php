@@ -94,7 +94,9 @@ function okState(PDO $pdo, string $message = ''): void
     jsonOut(['ok' => true, 'message' => $message, 'state' => fullState($pdo)]);
 }
 
-/** Oda numarasına göre varsayılan otobüs kodu üretir (db.php ile aynı mantık). */
+/** Oda numarasına göre varsayılan otobüs kodu üretir (db.php ile aynı mantık).
+ * 44: vip alt 1 ... 50: vip alt 8, 51: vip 1, 52: vip 2, 53: vip 3, 54: vip 4,
+ * 55+: vip 1..4 dönüşümlü. */
 function defaultBusCodeApi(int $roomNo): string
 {
     if ($roomNo <= 43) {
@@ -103,10 +105,12 @@ function defaultBusCodeApi(int $roomNo): string
     }
     $vipAlt = ['vip alt 1', 'vip alt 2', 'vip alt 3', 'vip alt 4', 'vip alt 5', 'vip alt 7', 'vip alt 8'];
     $vip    = ['vip 1', 'vip 2', 'vip 3', 'vip 4'];
-    $all    = array_merge($vipAlt, $vip);
-    $idx    = $roomNo - 44;
+    $idx = $roomNo - 44;
     if ($idx < 0) $idx = 0;
-    return $all[$idx % count($all)];
+    if ($idx < count($vipAlt)) {
+        return $vipAlt[$idx];
+    }
+    return $vip[($idx - count($vipAlt)) % count($vip)];
 }
 
 /**
