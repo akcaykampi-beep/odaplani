@@ -34,9 +34,9 @@ uygulaması **PHP + MySQL veritabanı** ile ekle / sil / güncelle destekli hale
 ## Özellikler (Ekle / Sil / Güncelle)
 
 - **Oda Ekle** — "Oda Ekle" düğmesi → yeni oda veritabanına kaydedilir.
-- **Yerinde Oda Güncelleme** — bir odaya tıklayın; ayrı pencere açılmadan oda no, yatak sayısı, blok ve rampa bilgisi kart üzerinde düzenlenir.
-- **Yerinde Misafir Güncelleme** — ad soyad, TC kimlik no, geliş otobüsü ve kısa sağlık/genel notu aynı oda kartında eklenir, değiştirilir veya silinir.
-- **Çok Biçimli Rapor** — oda ve yatak bazlı raporu doğrudan PDF, Excel (`.xlsx`), Word (`.docx`) veya JPG olarak indirir.
+- **Modalda Oda Güncelleme** — bir odaya tıklayın; harf ve rakam içerebilen oda adı/numarası, yatak sayısı, blok ve rampa bilgisi geniş düzenleme penceresinde açılır.
+- **Modalda Misafir Güncelleme** — ad soyad, TC kimlik no, telefon, A‑1/A‑2/A‑3 geliş otobüsü ve kısa sağlık/genel notu aynı düzenleme penceresinde eklenir, değiştirilir veya silinir.
+- **Çok Biçimli Rapor** — A‑1, A‑2 ve A‑3 otobüslerine göre gruplanmış; sıra no, oda/yatak, TCKN, ad soyad, telefon ve not sütunlu listeyi PDF, Excel (`.xlsx`), Word (`.docx`) veya JPG olarak indirir.
 - **Oda Sil** — seçili oda kartındaki "Odayı Sil" ile kalıcı olarak silinir (misafirleri de otomatik silinir).
 - **Aile/Grup Ekle** — bekleme listesine ekler, isteğe bağlı otomatik yerleştirir.
 - **Bekleme Listesinden Sil** — çöp kutusu simgesi.
@@ -52,5 +52,6 @@ uygulaması **PHP + MySQL veritabanı** ile ekle / sil / güncelle destekli hale
 - API her işlemden sonra güncel tüm durumu döndürür; arayüz tek noktadan yeniden çizilir.
 - Oda ve misafir değişiklikleri `save_room` işlemiyle tek veritabanı transaction'ı içinde kaydedilir.
 - Misafir modelindeki `notes` alanı (veritabanında `room_guests.note`) en fazla 255 karakterlik sağlık durumu veya genel açıklama saklar.
+- Misafir telefonları `phone` alanında saklanır; mevcut veritabanlarına sütun otomatik olarak eklenir.
 - Dışa aktarma kitaplıkları yalnızca ihtiyaç anında yüklenir: SheetJS (Excel), docx (Word), html2canvas (JPG/PDF) ve jsPDF (PDF).
 - Tablolar: `rooms`, `room_guests`, `waiting_list`, `waiting_members` (foreign key + ON DELETE CASCADE).

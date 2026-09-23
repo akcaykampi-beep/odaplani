@@ -36,10 +36,9 @@ function db(): PDO
 }
 
 /**
- * Mevcut kurulumu VIP oda düzenine geçirir (tek seferlik migration):
- * - 43 sonrası tüm odaları siler (no > 43)
- * - vip otobüs kodlarını A-1/A-2/A-3'e çevirir
- * - 44-54 arası 11 VIP odayı (vip alt 1-5, vip alt 7-8, vip 1-4) eksikse ekler
+ * Mevcut kurulumu güncel VIP oda düzenine geçirir:
+ * 43'ten sonra VIP ALT 1-8, ardından VIP 1-3 gelir.
+ * Oda kayıtları yerinde güncellendiği için mevcut misafir atamaları korunur.
  */
 function migrateRoomsToVipLayout(PDO $pdo): void
 {
@@ -47,30 +46,12 @@ function migrateRoomsToVipLayout(PDO $pdo): void
         $cols = $pdo->query('SHOW COLUMNS FROM rooms')->fetchAll(PDO::FETCH_COLUMN);
         if (empty($cols)) return;
 
-        // 2b) Önceki ayrı-blok VIP'leri (VIP ALT 1, VIP 1...) tek blok 'VIP ODALAR' altında topla
-        try {
-            $pdo->exec("UPDATE rooms SET block = 'VIP ODALAR', notes = CASE no
-                WHEN 44 THEN 'VIP ALT 1' WHEN 45 THEN 'VIP ALT 2' WHEN 46 THEN 'VIP ALT 3' WHEN 47 THEN 'VIP ALT 4'
-                WHEN 48 THEN 'VIP ALT 5' WHEN 49 THEN 'VIP ALT 7' WHEN 50 THEN 'VIP ALT 8'
-                WHEN 51 THEN 'VIP 1' WHEN 52 THEN 'VIP 2' WHEN 53 THEN 'VIP 3' WHEN 54 THEN 'VIP 4'
-                ELSE notes END
-                WHERE no >= 44 AND no <= 54 AND block <> 'VIP ODALAR'");
-        } catch (Throwable $e) {
-            error_log('vip migrate 2b hata: ' . $e->getMessage());
-        }
+        $migrationName = 'vip_layout_alt_1_8_vip_1_3';
+        $migrationCheck = $pdo->prepare('SELECT COUNT(*) FROM schema_migrations WHERE name = ?');
+        $migrationCheck->execute([$migrationName]);
+        if ((int) $migrationCheck->fetchColumn() > 0) return;
 
-        // Zaten tek-blok VIP düzende mi?
-        $chk = $pdo->prepare('SELECT block FROM rooms WHERE no = 44 LIMIT 1');
-        $chk->execute();
-        $row44 = $chk->fetch();
-        if ($row44 && (string) $row44['block'] === 'VIP ODALAR') {
-            return;
-        }
-
-        // 1) 43 sonrası odaları (eski 44-50) sil — misafirleri CASCADE ile silinir
-        $pdo->exec('DELETE FROM rooms WHERE no > 43');
-
-        // 2a) vip bus_code -> A-1/A-2/A-3
+        // Eski "vip..." otobüs kodlarını üç geçerli seçenek arasında paylaştır.
         $fix = $pdo->query("SELECT id FROM room_guests WHERE bus_code LIKE 'vip%'");
         if ($fix) {
             $upd = $pdo->prepare('UPDATE room_guests SET bus_code = ? WHERE id = ?');
@@ -84,16 +65,28 @@ function migrateRoomsToVipLayout(PDO $pdo): void
 
         $vipRooms = [
             44 => 'VIP ALT 1', 45 => 'VIP ALT 2', 46 => 'VIP ALT 3', 47 => 'VIP ALT 4',
-            48 => 'VIP ALT 5', 49 => 'VIP ALT 7', 50 => 'VIP ALT 8',
-            51 => 'VIP 1', 52 => 'VIP 2', 53 => 'VIP 3', 54 => 'VIP 4',
+            48 => 'VIP ALT 5', 49 => 'VIP ALT 6', 50 => 'VIP ALT 7', 51 => 'VIP ALT 8',
+            52 => 'VIP 1', 53 => 'VIP 2', 54 => 'VIP 3',
         ];
+
+        // Etiketler zaten güncelse, kullanıcı sonradan oda adını değiştirmiş olsa da dokunma.
+        $currentLabels = $pdo->query("SELECT notes FROM rooms WHERE block = 'VIP ODALAR'")
+            ->fetchAll(PDO::FETCH_COLUMN);
+        $missingLabels = array_diff(array_values($vipRooms), array_map('strval', $currentLabels ?: []));
+        if (empty($missingLabels)) {
+            $pdo->prepare('INSERT IGNORE INTO schema_migrations (name) VALUES (?)')->execute([$migrationName]);
+            return;
+        }
+
         $ins = $pdo->prepare(
-            "INSERT IGNORE INTO rooms (no, block, capacity, has_ramp, is_staff, guest_group, notes)
-             VALUES (:no, :block, 2, 0, 0, NULL, :notes)"
+            "INSERT INTO rooms (no, block, capacity, has_ramp, is_staff, guest_group, notes)
+             VALUES (:no, :block, 2, 0, 0, NULL, :notes)
+             ON DUPLICATE KEY UPDATE block = VALUES(block), notes = VALUES(notes)"
         );
         foreach ($vipRooms as $no => $vipName) {
-            $ins->execute([':no' => $no, ':block' => 'VIP ODALAR', ':notes' => $vipName]);
+            $ins->execute([':no' => (string) $no, ':block' => 'VIP ODALAR', ':notes' => $vipName]);
         }
+        $pdo->prepare('INSERT IGNORE INTO schema_migrations (name) VALUES (?)')->execute([$migrationName]);
     } catch (Throwable $e) {
         error_log('migrateRoomsToVipLayout hata: ' . $e->getMessage());
     }
@@ -116,20 +109,31 @@ function ensureColumn(PDO $pdo, string $table, string $column, string $alterSql)
     }
 }
 
-/** Oda numarasına göre varsayılan otobüs kodu — sadece A-1, A-2, A-3 döner. */
-function defaultBusCode(int $roomNo): string
+/** Oda adına göre varsayılan otobüs kodu — sadece A-1, A-2, A-3 döner. */
+function defaultBusCode(string $roomNo): string
 {
     $seq = ['A-1', 'A-2', 'A-3'];
-    return $seq[($roomNo - 1) % count($seq)];
+    preg_match('/\d+/', $roomNo, $match);
+    $index = isset($match[0])
+        ? max(0, (int) $match[0] - 1)
+        : array_sum(array_map('ord', str_split($roomNo)));
+    return $seq[$index % count($seq)];
 }
 
 function createSchema(PDO $pdo): void
 {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            name       VARCHAR(191) PRIMARY KEY,
+            applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci
+    ");
+
     // Odalar
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS rooms (
             id          INT AUTO_INCREMENT PRIMARY KEY,
-            no          INT NOT NULL,
+            no          VARCHAR(40) NOT NULL,
             block       VARCHAR(191) NOT NULL,
             capacity    INT NOT NULL DEFAULT 2,
             has_ramp    TINYINT(1) NOT NULL DEFAULT 0,
@@ -141,6 +145,21 @@ function createSchema(PDO $pdo): void
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci
     ");
 
+    // Eski kurulumlarda oda numarası INT olabilir; harfli oda adları için metne çevir.
+    try {
+        $typeStmt = $pdo->prepare(
+            "SELECT DATA_TYPE FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'rooms' AND COLUMN_NAME = 'no'"
+        );
+        $typeStmt->execute();
+        $roomNoType = strtolower((string) $typeStmt->fetchColumn());
+        if (!in_array($roomNoType, ['char', 'varchar'], true)) {
+            $pdo->exec('ALTER TABLE rooms MODIFY COLUMN no VARCHAR(40) NOT NULL');
+        }
+    } catch (Throwable $e) {
+        error_log('Oda adı metin dönüşümü başarısız: ' . $e->getMessage());
+    }
+
     // Bir odada kalan misafirler
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS room_guests (
@@ -148,6 +167,7 @@ function createSchema(PDO $pdo): void
             room_id  INT NOT NULL,
             name     VARCHAR(191) NOT NULL,
             tc       VARCHAR(20) DEFAULT NULL,
+            phone    VARCHAR(30) DEFAULT NULL,
             bus_code VARCHAR(40) DEFAULT NULL,
             note     VARCHAR(255) DEFAULT NULL,
             sort     INT NOT NULL DEFAULT 0,
@@ -158,7 +178,8 @@ function createSchema(PDO $pdo): void
 
     // Mevcut (eski) kurulumlar için sütunları güvenle ekle (migration)
     ensureColumn($pdo, 'room_guests', 'tc',       "ALTER TABLE room_guests ADD COLUMN tc VARCHAR(20) DEFAULT NULL AFTER name");
-    ensureColumn($pdo, 'room_guests', 'bus_code', "ALTER TABLE room_guests ADD COLUMN bus_code VARCHAR(40) DEFAULT NULL AFTER tc");
+    ensureColumn($pdo, 'room_guests', 'phone',    "ALTER TABLE room_guests ADD COLUMN phone VARCHAR(30) DEFAULT NULL AFTER tc");
+    ensureColumn($pdo, 'room_guests', 'bus_code', "ALTER TABLE room_guests ADD COLUMN bus_code VARCHAR(40) DEFAULT NULL AFTER phone");
     ensureColumn($pdo, 'room_guests', 'note',     "ALTER TABLE room_guests ADD COLUMN note VARCHAR(255) DEFAULT NULL AFTER bus_code");
 
     // Bekleme listesi (aileler / gruplar)
@@ -207,7 +228,7 @@ function seedIfEmpty(PDO $pdo): void
          VALUES (:no, :block, :capacity, :has_ramp, :is_staff, :guest_group, :notes)'
     );
     $insGuest = $pdo->prepare(
-        'INSERT INTO room_guests (room_id, name, tc, bus_code, note, sort) VALUES (:room_id, :name, :tc, :bus_code, :note, :sort)'
+        'INSERT INTO room_guests (room_id, name, tc, phone, bus_code, note, sort) VALUES (:room_id, :name, :tc, :phone, :bus_code, :note, :sort)'
     );
 
     $pdo->beginTransaction();
@@ -226,17 +247,19 @@ function seedIfEmpty(PDO $pdo): void
                 $roomId = (int) $pdo->lastInsertId();
                 if ($roomId > 0 && !empty($r['guests'])) {
                     $sort = 0;
-                    $busCode = defaultBusCode((int) $r['no']);
+                    $busCode = defaultBusCode((string) $r['no']);
                     foreach ($r['guests'] as $g) {
-                        // Misafir dizi (isim/tc/bus) veya düz metin (isim) olabilir
+                        // Misafir dizi (isim/tc/telefon/otobüs/not) veya düz metin (isim) olabilir
                         if (is_array($g)) {
                             $gName = trim((string) ($g['name'] ?? ''));
                             $gTc   = trim((string) ($g['tc'] ?? ''));
+                            $gPhone = trim((string) ($g['phone'] ?? ''));
                             $gBus  = trim((string) ($g['bus'] ?? $g['busCode'] ?? ''));
                             $gNote = trim((string) ($g['notes'] ?? $g['note'] ?? ''));
                         } else {
                             $gName = trim((string) $g);
                             $gTc   = '';
+                            $gPhone = '';
                             $gBus  = '';
                             $gNote = '';
                         }
@@ -245,6 +268,7 @@ function seedIfEmpty(PDO $pdo): void
                             ':room_id'  => $roomId,
                             ':name'     => $gName,
                             ':tc'       => $gTc !== '' ? $gTc : null,
+                            ':phone'    => $gPhone !== '' ? $gPhone : null,
                             ':bus_code' => $gBus !== '' ? $gBus : $busCode,
                             ':note'     => $gNote !== '' ? $gNote : null,
                             ':sort'     => $sort++,

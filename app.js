@@ -7,13 +7,31 @@ let waitingList = [];
 let selectedRoomId = null;
 
 const API = 'api.php';
+const BUS_CODES = ['A-1', 'A-2', 'A-3'];
 
-/* Misafir kaydı hem düz metin ("Ad Soyad") hem de {name,tc,busCode,notes} olabilir.
+/* Misafir kaydı hem düz metin ("Ad Soyad") hem de {name,tc,phone,busCode,notes} olabilir.
    Aşağıdaki yardımcılar her iki biçimi de güvenle okur. */
 function guestName(g) { return (g && typeof g === 'object') ? (g.name || '') : (g || ''); }
 function guestTc(g)   { return (g && typeof g === 'object') ? (g.tc || '') : ''; }
+function guestPhone(g){ return (g && typeof g === 'object') ? (g.phone || '') : ''; }
 function guestBus(g)  { return (g && typeof g === 'object') ? (g.busCode || '') : ''; }
 function guestNote(g) { return (g && typeof g === 'object') ? (g.notes || g.note || '') : ''; }
+
+function compareRoomNames(a, b) {
+  return String(a.no).localeCompare(String(b.no), 'tr', { numeric: true, sensitivity: 'base' });
+}
+
+function defaultBusCodeForRoom(roomNo) {
+  const text = String(roomNo || '');
+  const number = text.match(/\d+/);
+  let index;
+  if (number) {
+    index = Math.max(0, Number(number[0]) - 1);
+  } else {
+    index = [...text].reduce((sum, character) => sum + character.codePointAt(0), 0);
+  }
+  return BUS_CODES[index % BUS_CODES.length];
+}
 
 /* Satır içi düzenleme durumunda olan odanın kimliği (null = hiçbiri) */
 let editingRoomId = null;
@@ -103,7 +121,7 @@ function renderBlocks() {
   const blockEl = document.getElementById('filterBlock');
   const statusEl = document.getElementById('filterStatus');
   const capEl = document.getElementById('filterCapacity');
-  const searchQuery = searchEl ? searchEl.value.trim().toLowerCase() : '';
+  const searchQuery = searchEl ? searchEl.value.trim().toLocaleLowerCase('tr-TR') : '';
   const filterBlock = blockEl ? blockEl.value : 'ALL';
   const filterStatus = statusEl ? statusEl.value : 'ALL';
   const filterCapacity = capEl ? capEl.value : 'ALL';
@@ -130,15 +148,16 @@ function renderBlocks() {
         if (cap !== 6 && room.capacity !== cap) return false;
       }
       if (searchQuery) {
-        const inNo = room.no.toString().includes(searchQuery);
-        const inGroup = (room.guestGroup || '').toLowerCase().includes(searchQuery);
+        const inNo = String(room.no).toLocaleLowerCase('tr-TR').includes(searchQuery);
+        const inGroup = (room.guestGroup || '').toLocaleLowerCase('tr-TR').includes(searchQuery);
         const inGuests = (room.guests || []).some(g =>
-          (guestName(g)).toLowerCase().includes(searchQuery) ||
-          (guestTc(g)).toLowerCase().includes(searchQuery) ||
-          (guestBus(g)).toLowerCase().includes(searchQuery) ||
-          (guestNote(g)).toLowerCase().includes(searchQuery)
+          (guestName(g)).toLocaleLowerCase('tr-TR').includes(searchQuery) ||
+          (guestTc(g)).toLocaleLowerCase('tr-TR').includes(searchQuery) ||
+          (guestPhone(g)).toLocaleLowerCase('tr-TR').includes(searchQuery) ||
+          (guestBus(g)).toLocaleLowerCase('tr-TR').includes(searchQuery) ||
+          (guestNote(g)).toLocaleLowerCase('tr-TR').includes(searchQuery)
         );
-        const inNotes = (room.notes || '').toLowerCase().includes(searchQuery);
+        const inNotes = (room.notes || '').toLocaleLowerCase('tr-TR').includes(searchQuery);
         if (!inNo && !inGroup && !inGuests && !inNotes) return false;
       }
       return true;
@@ -165,7 +184,7 @@ function renderBlocks() {
 
     const grid = document.createElement('div');
     grid.className = "p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5";
-    blockRooms.sort((a, b) => a.no - b.no).forEach(room => grid.appendChild(createRoomCard(room)));
+    blockRooms.sort(compareRoomNames).forEach(room => grid.appendChild(createRoomCard(room)));
     blockSection.appendChild(grid);
     container.appendChild(blockSection);
   });
@@ -182,8 +201,6 @@ function renderBlocks() {
 }
 
 function createRoomCard(room) {
-  if (editingRoomId === room.id) return createInlineRoomEditor(room);
-
   const card = document.createElement('article');
   card.className = "room-card relative bg-white rounded-xl border transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between overflow-hidden ";
   const isVipRoom = (room.block || '').toUpperCase().includes('VIP');
@@ -213,6 +230,7 @@ function createRoomCard(room) {
       ${guests.map(g => {
         const nm = escapeHtml(guestName(g));
         const tc = escapeHtml(guestTc(g));
+        const phone = escapeHtml(guestPhone(g));
         const bus = escapeHtml(guestBus(g));
         const note = escapeHtml(guestNote(g));
         return `<div class="guest-entry px-2.5 py-1 hover:bg-amber-50/80">
@@ -221,6 +239,7 @@ function createRoomCard(room) {
             <span class="text-[10px] text-slate-500 font-mono">${tc ? '<i class="fa-solid fa-id-card text-[9px] mr-0.5"></i>' + tc : '<span class="italic text-slate-300">TC yok</span>'}</span>
             ${bus ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 whitespace-nowrap"><i class="fa-solid fa-bus text-[8px] mr-0.5"></i>${bus}</span>` : ''}
           </div>
+          ${phone ? `<div class="text-[10px] text-slate-500 mt-0.5"><i class="fa-solid fa-phone text-[8px] mr-0.5"></i>${phone}</div>` : ''}
           ${note ? `<div class="text-[10px] text-rose-700 mt-0.5 leading-snug"><i class="fa-solid fa-notes-medical text-[9px] mr-0.5"></i>${note}</div>` : ''}
         </div>`;
       }).join('')}
@@ -236,7 +255,7 @@ function createRoomCard(room) {
     <div class="p-3">
       <div class="flex items-start justify-between gap-1 pb-2 border-b border-slate-100">
         <div class="flex items-center gap-1.5">
-          <div class="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-black text-[10px] shadow-xs leading-none text-center px-0.5">${isVipRoom && vipName ? escapeHtml(vipName) : room.no}</div>
+          <div class="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-black text-[10px] shadow-xs leading-none text-center px-0.5">${isVipRoom && vipName ? escapeHtml(vipName) : escapeHtml(String(room.no))}</div>
           <div><span class="text-[11px] font-bold text-slate-700 block leading-tight">${escapeHtml(displayTitle)}</span><span class="text-[10px] text-slate-500 font-medium">${room.capacity} Kişilik</span></div>
         </div>
         <div class="flex flex-col items-end gap-1">
@@ -271,6 +290,11 @@ function createRoomCard(room) {
 }
 
 /* ---------- Oda üzerinde satır içi düzenleme ---------- */
+function busSelectOptions(selected) {
+  const active = BUS_CODES.includes(selected) ? selected : BUS_CODES[0];
+  return BUS_CODES.map(code => `<option value="${code}" ${code === active ? 'selected' : ''}>${code}</option>`).join('');
+}
+
 function inlineGuestRowHtml(guest = {}) {
   return `<div class="inline-guest-row rounded-lg border border-slate-200 bg-slate-50 p-2.5">
     <div class="grid grid-cols-1 md:grid-cols-12 gap-2">
@@ -280,10 +304,13 @@ function inlineGuestRowHtml(guest = {}) {
       <label class="md:col-span-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">TC Kimlik No
         <input type="text" inputmode="numeric" maxlength="11" value="${escapeHtml(guestTc(guest))}" placeholder="11 hane" class="inline-guest-tc mt-1 w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white text-sm font-mono normal-case tracking-normal focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
       </label>
-      <label class="md:col-span-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Geliş Otobüsü
-        <input type="text" list="busCodeList" maxlength="40" value="${escapeHtml(guestBus(guest))}" placeholder="A-1" class="inline-guest-bus mt-1 w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white text-sm normal-case font-normal tracking-normal focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+      <label class="md:col-span-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Telefon
+        <input type="tel" maxlength="30" value="${escapeHtml(guestPhone(guest))}" placeholder="05xx xxx xx xx" class="inline-guest-phone mt-1 w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white text-sm normal-case font-normal tracking-normal focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
       </label>
-      <label class="md:col-span-4 text-[10px] font-bold uppercase tracking-wide text-slate-500">Sağlık / Genel Not
+      <label class="md:col-span-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Geliş Otobüsü
+        <select class="inline-guest-bus mt-1 w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white text-sm normal-case font-normal tracking-normal focus:ring-2 focus:ring-indigo-500 focus:outline-none">${busSelectOptions(guestBus(guest))}</select>
+      </label>
+      <label class="md:col-span-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Sağlık / Genel Not
         <input type="text" maxlength="255" value="${escapeHtml(guestNote(guest))}" placeholder="Alerji, ilaç, özel durum…" class="inline-guest-notes mt-1 w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white text-sm normal-case font-normal tracking-normal focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
       </label>
       <div class="md:col-span-1 flex items-end justify-end">
@@ -295,7 +322,7 @@ function inlineGuestRowHtml(guest = {}) {
 
 function createInlineRoomEditor(room) {
   const card = document.createElement('article');
-  card.className = 'room-card sm:col-span-2 md:col-span-3 lg:col-span-4 xl:col-span-5 rounded-xl border-2 border-indigo-400 bg-white shadow-lg overflow-hidden';
+  card.className = 'room-card rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden';
   const isOccupied = !room.isStaff && !!(room.guestGroup && room.guestGroup.trim());
   const guests = room.guests && room.guests.length ? room.guests : [{}];
   const waitingOptions = waitingList.map(w => `<option value="${w.id}">${escapeHtml(w.title)} (${w.count} kişi${w.needsRamp ? ' - Rampalı' : ''})</option>`).join('');
@@ -303,16 +330,16 @@ function createInlineRoomEditor(room) {
   card.innerHTML = `<form class="inline-room-form" onsubmit="saveInlineRoom(event, ${room.id})" onclick="event.stopPropagation()">
     <div class="px-4 py-3 bg-indigo-700 text-white flex items-center justify-between gap-3">
       <div>
-        <div class="font-extrabold">Oda ${room.no} — yerinde düzenleme</div>
-        <div class="text-[11px] text-indigo-100 mt-0.5">Oda ve misafir değişikliklerini tek seferde kaydedin.</div>
+        <div class="font-extrabold">Oda ${escapeHtml(String(room.no))} — Oda ve Misafir Düzenleme</div>
+        <div class="text-[11px] text-indigo-100 mt-0.5">Tüm değişiklikleri tek seferde kaydedin.</div>
       </div>
       <button type="button" onclick="cancelInlineEdit()" class="w-9 h-9 rounded-lg hover:bg-white/10" aria-label="Düzenlemeyi kapat"><i class="fa-solid fa-xmark"></i></button>
     </div>
 
     <div class="p-4 space-y-4">
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <label class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Oda Numarası
-          <input type="number" min="1" max="999" required value="${room.no}" class="inline-room-no mt-1 w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+        <label class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Oda Adı / Numarası
+          <input type="text" maxlength="40" required value="${escapeHtml(String(room.no))}" placeholder="Örn: 43, A3 veya VIP 1" class="inline-room-no mt-1 w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-bold normal-case tracking-normal focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
         </label>
         <label class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Yatak Sayısı
           <input type="number" min="1" max="10" required value="${room.capacity}" class="inline-room-capacity mt-1 w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
@@ -337,7 +364,7 @@ function createInlineRoomEditor(room) {
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 class="text-sm font-extrabold text-slate-800">Misafir Bilgileri</h3>
-              <p class="text-[11px] text-slate-500">Ad, TC, geliş otobüsü ve kısa sağlık/genel notu aynı satırda düzenleyin.</p>
+              <p class="text-[11px] text-slate-500">Ad, TC, telefon, geliş otobüsü ve kısa sağlık/genel notu aynı satırda düzenleyin.</p>
             </div>
             <button type="button" onclick="addInlineGuest(this)" class="px-3 py-2 rounded-lg border border-dashed border-indigo-400 text-xs font-bold text-indigo-700 hover:bg-indigo-50"><i class="fa-solid fa-plus mr-1"></i>Misafir Ekle</button>
           </div>
@@ -367,19 +394,33 @@ function createInlineRoomEditor(room) {
 }
 
 function startInlineEdit(roomId) {
+  const room = rooms.find(item => item.id === roomId);
+  const content = document.getElementById('roomEditModalContent');
+  if (!room || !content) return;
   editingRoomId = roomId;
   selectedRoomId = roomId;
-  renderBlocks();
+  content.innerHTML = '';
+  content.appendChild(createInlineRoomEditor(room));
+  openModal('roomEditModal');
+  document.body.classList.add('overflow-hidden');
   requestAnimationFrame(() => {
-    const form = document.querySelector('.inline-room-form');
-    if (form) form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const firstInput = content.querySelector('.inline-room-no');
+    if (firstInput) firstInput.focus({ preventScroll: true });
   });
 }
 
 function cancelInlineEdit() {
   editingRoomId = null;
   selectedRoomId = null;
-  renderBlocks();
+  closeModal('roomEditModal');
+  document.body.classList.remove('overflow-hidden');
+  const content = document.getElementById('roomEditModalContent');
+  if (content) content.innerHTML = '';
+}
+
+function refreshRoomEditModal(roomId) {
+  const modal = document.getElementById('roomEditModal');
+  if (modal && !modal.classList.contains('hidden')) startInlineEdit(roomId);
 }
 
 function addInlineGuest(button) {
@@ -398,13 +439,14 @@ async function saveInlineRoom(event, roomId) {
   const guests = [...form.querySelectorAll('.inline-guest-row')].map(row => ({
     name: row.querySelector('.inline-guest-name').value.trim(),
     tc: row.querySelector('.inline-guest-tc').value.trim(),
+    phone: row.querySelector('.inline-guest-phone').value.trim(),
     busCode: row.querySelector('.inline-guest-bus').value.trim(),
     notes: row.querySelector('.inline-guest-notes').value.trim()
   })).filter(guest => guest.name !== '');
 
   const payload = {
     id: roomId,
-    no: parseInt(form.querySelector('.inline-room-no').value, 10),
+    no: form.querySelector('.inline-room-no').value.trim(),
     capacity: parseInt(form.querySelector('.inline-room-capacity').value, 10),
     block: form.querySelector('.inline-room-block').value.trim(),
     hasRamp: form.querySelector('.inline-room-ramp').checked,
@@ -415,6 +457,10 @@ async function saveInlineRoom(event, roomId) {
   if (!d) return;
   editingRoomId = null;
   selectedRoomId = null;
+  closeModal('roomEditModal');
+  document.body.classList.remove('overflow-hidden');
+  const content = document.getElementById('roomEditModalContent');
+  if (content) content.innerHTML = '';
   populateBlockDropdown();
   renderAll();
   showToast(d.message, 'success');
@@ -434,12 +480,12 @@ async function evictRoom(roomId) {
   if (!room) return;
   if (!confirm(`Oda ${room.no} (${room.guestGroup}) boşaltılsın mı?`)) return;
   const d = await apiCall('evict_room', { id: roomId });
-  if (d) { editingRoomId = roomId; populateBlockDropdown(); renderAll(); showToast(d.message, 'info'); }
+  if (d) { populateBlockDropdown(); renderAll(); refreshRoomEditModal(roomId); showToast(d.message, 'info'); }
 }
 
 async function toggleStaffStatus(roomId) {
   const d = await apiCall('toggle_staff', { id: roomId });
-  if (d) { editingRoomId = roomId; renderAll(); showToast(d.message, 'success'); }
+  if (d) { renderAll(); refreshRoomEditModal(roomId); showToast(d.message, 'success'); }
 }
 
 async function assignFromWaitingList(roomId, suppliedWaitId = null) {
@@ -450,7 +496,7 @@ async function assignFromWaitingList(roomId, suppliedWaitId = null) {
   if (family.count > room.capacity &&
       !confirm(`Dikkat: Aile ${family.count} kişi ancak odanın kapasitesi ${room.capacity} kişilik. Yine de yerleştirilsin mi?`)) return;
   const d = await apiCall('assign_waiting', { roomId, waitingId: waitId });
-  if (d) { editingRoomId = roomId; renderAll(); showToast(d.message, 'success'); }
+  if (d) { renderAll(); refreshRoomEditModal(roomId); showToast(d.message, 'success'); }
 }
 
 async function handleFamilyFormSubmit(event) {
@@ -479,7 +525,7 @@ async function handleFamilyFormSubmit(event) {
 async function handleCreateRoom(event) {
   event.preventDefault();
   const payload = {
-    no: parseInt(document.getElementById('newRoomNo').value, 10),
+    no: document.getElementById('newRoomNo').value.trim(),
     capacity: parseInt(document.getElementById('newRoomCap').value, 10),
     block: document.getElementById('newRoomBlock').value.trim(),
     hasRamp: document.getElementById('newRoomRamp').checked,
@@ -502,7 +548,7 @@ async function deleteRoom(roomId) {
   if (!room) return;
   if (!confirm(`Oda ${room.no} kalıcı olarak silinsin mi? Bu işlem geri alınamaz.`)) return;
   const d = await apiCall('delete_room', { id: roomId });
-  if (d) { editingRoomId = null; selectedRoomId = null; populateBlockDropdown(); renderAll(); showToast(d.message, 'info'); }
+  if (d) { cancelInlineEdit(); populateBlockDropdown(); renderAll(); showToast(d.message, 'info'); }
 }
 
 /* Bekleme listesi */
@@ -614,7 +660,11 @@ document.addEventListener('click', event => {
   if (wrapper && !wrapper.contains(event.target)) setExportMenu(false);
 });
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape') setExportMenu(false);
+  if (event.key === 'Escape') {
+    setExportMenu(false);
+    const roomModal = document.getElementById('roomEditModal');
+    if (roomModal && !roomModal.classList.contains('hidden')) cancelInlineEdit();
+  }
 });
 
 function reportFileName(extension) {
@@ -623,7 +673,7 @@ function reportFileName(extension) {
 }
 
 function getReportRows() {
-  const sortedRooms = [...rooms].sort((a, b) => a.no - b.no);
+  const sortedRooms = [...rooms].sort(compareRoomNames);
   const rows = [];
   sortedRooms.forEach(room => {
     const listedGuests = room.guests && room.guests.length
@@ -641,7 +691,10 @@ function getReportRows() {
         bedNo: bedIndex + 1,
         guestName: guest ? guestName(guest) : '',
         nationalId: guest ? guestTc(guest) : '',
-        busInfo: guest ? guestBus(guest) : '',
+        phone: guest ? guestPhone(guest) : '',
+        busInfo: guest
+          ? (BUS_CODES.includes(guestBus(guest)) ? guestBus(guest) : defaultBusCodeForRoom(room.no))
+          : '',
         notes: guest ? (guestNote(guest) || (bedIndex === 0 ? roomGeneralNote : '')) : '',
         status: room.isStaff ? 'Personel' : (guest ? 'Dolu' : 'Boş')
       });
@@ -661,11 +714,18 @@ function getReportSummary(rows) {
 }
 
 function reportHeaders() {
-  return ['Blok / Kat', 'Oda No', 'Yatak No', 'Misafir Adı Soyadı', 'TC Kimlik No', 'Geliş Otobüsü', 'Sağlık / Genel Not', 'Durum'];
+  return ['S.N.', 'Oda / Yatak', 'TCKN', 'Ad Soyad', 'Telefon', 'Sağlık / Genel Not'];
 }
 
-function reportRowValues(row) {
-  return [row.block, row.roomNo, row.bedNo, row.guestName, row.nationalId, row.busInfo, row.notes, row.status];
+function reportRowValues(row, sequence = 1) {
+  return [sequence, `${row.roomNo} / ${row.bedNo}`, row.nationalId, row.guestName, row.phone, row.notes];
+}
+
+function getBusReportGroups(rows) {
+  return BUS_CODES.map(code => ({
+    code,
+    rows: rows.filter(row => row.busInfo === code)
+  }));
 }
 
 function downloadBlob(blob, filename) {
@@ -682,9 +742,9 @@ function downloadBlob(blob, filename) {
 async function downloadReport(format, button) {
   setExportMenu(false);
   const formatNames = { pdf: 'PDF', xlsx: 'Excel', docx: 'Word', jpg: 'JPG' };
-  const rows = getReportRows();
+  const rows = getReportRows().filter(row => row.guestName && row.status !== 'Personel');
   if (!rows.length) {
-    showToast('Dışa aktarılacak oda kaydı bulunamadı.', 'warning');
+    showToast('Dışa aktarılacak misafir kaydı bulunamadı.', 'warning');
     return;
   }
 
@@ -721,30 +781,34 @@ async function downloadReport(format, button) {
 
 function exportReportExcel(rows) {
   const XLSX = window.XLSX;
-  const summary = getReportSummary(rows);
   const generatedAt = new Date().toLocaleString('tr-TR');
-  const tableData = [
-    ['ODAMATİK ODA VE MİSAFİR RAPORU'],
-    [`Oluşturulma: ${generatedAt} | ${summary.roomCount} oda | ${summary.bedCount} yatak | ${summary.guestCount} misafir`],
-    [],
-    reportHeaders(),
-    ...rows.map(reportRowValues)
-  ];
-  const worksheet = XLSX.utils.aoa_to_sheet(tableData);
-  worksheet['!merges'] = [
-    XLSX.utils.decode_range('A1:H1'),
-    XLSX.utils.decode_range('A2:H2')
-  ];
-  worksheet['!cols'] = [
-    { wch: 34 }, { wch: 10 }, { wch: 10 }, { wch: 26 },
-    { wch: 16 }, { wch: 18 }, { wch: 38 }, { wch: 12 }
-  ];
-  worksheet['!rows'] = [{ hpt: 26 }, { hpt: 20 }, { hpt: 8 }, { hpt: 24 }];
-  worksheet['!autofilter'] = { ref: `A4:H${rows.length + 4}` };
+  const workbook = XLSX.utils.book_new();
+
+  getBusReportGroups(rows).forEach(group => {
+    const tableData = [
+      [group.code],
+      [`Oluşturulma: ${generatedAt} | ${group.rows.length} misafir`],
+      [],
+      reportHeaders(),
+      ...group.rows.map((row, index) => reportRowValues(row, index + 1))
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(tableData);
+    worksheet['!merges'] = [
+      XLSX.utils.decode_range('A1:F1'),
+      XLSX.utils.decode_range('A2:F2')
+    ];
+    worksheet['!cols'] = [
+      { wch: 7 }, { wch: 14 }, { wch: 18 },
+      { wch: 30 }, { wch: 20 }, { wch: 42 }
+    ];
+    worksheet['!rows'] = [{ hpt: 28 }, { hpt: 20 }, { hpt: 8 }, { hpt: 24 }];
+    worksheet['!autofilter'] = { ref: `A4:F${Math.max(4, group.rows.length + 4)}` };
+    XLSX.utils.book_append_sheet(workbook, worksheet, group.code);
+  });
 
   const roomSummary = [
     ['Blok / Kat', 'Oda No', 'Yatak Sayısı', 'Dolu Yatak', 'Boş Yatak', 'Oda Durumu'],
-    ...[...rooms].sort((a, b) => a.no - b.no).map(room => {
+    ...[...rooms].sort(compareRoomNames).map(room => {
       const occupied = room.guests && room.guests.length ? room.guests.length : (room.guestGroup ? 1 : 0);
       return [
         room.block || '', room.no, room.capacity, room.isStaff ? 0 : occupied,
@@ -757,8 +821,6 @@ function exportReportExcel(rows) {
   summarySheet['!cols'] = [{ wch: 34 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
   summarySheet['!autofilter'] = { ref: `A1:F${roomSummary.length}` };
 
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Yatak ve Misafirler');
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'Oda Özeti');
   workbook.Props = {
     Title: 'OdaMatik Oda ve Misafir Raporu',
@@ -771,14 +833,15 @@ function exportReportExcel(rows) {
 
 async function exportReportWord(rows) {
   const d = window.docx;
-  const summary = getReportSummary(rows);
+  const summary = getReportSummary(getReportRows());
+  const groups = getBusReportGroups(rows);
   const borders = {
     top: { style: d.BorderStyle.SINGLE, size: 1, color: 'CBD5E1' },
     bottom: { style: d.BorderStyle.SINGLE, size: 1, color: 'CBD5E1' },
     left: { style: d.BorderStyle.SINGLE, size: 1, color: 'CBD5E1' },
     right: { style: d.BorderStyle.SINGLE, size: 1, color: 'CBD5E1' }
   };
-  const widths = [17, 7, 7, 18, 12, 12, 20, 7];
+  const widths = [6, 12, 18, 26, 18, 20];
   const wordCell = (text, index, header = false, alternate = false) => new d.TableCell({
     width: { size: widths[index], type: d.WidthType.PERCENTAGE },
     borders,
@@ -792,14 +855,54 @@ async function exportReportWord(rows) {
       children: [new d.TextRun({ text: String(text ?? ''), bold: header, color: header ? 'FFFFFF' : '1F2937', size: header ? 16 : 15, font: 'Arial' })]
     })]
   });
-  const headerRow = new d.TableRow({
-    tableHeader: true,
-    children: reportHeaders().map((header, index) => wordCell(header, index, true))
+  const wordTable = group => {
+    const headerRow = new d.TableRow({
+      tableHeader: true,
+      children: reportHeaders().map((header, index) => wordCell(header, index, true))
+    });
+    const dataRows = group.rows.length
+      ? group.rows.map((row, rowIndex) => new d.TableRow({
+          cantSplit: true,
+          children: reportRowValues(row, rowIndex + 1).map((value, index) => wordCell(value, index, false, rowIndex % 2 === 1))
+        }))
+      : [new d.TableRow({
+          children: [new d.TableCell({
+            columnSpan: 6,
+            borders,
+            children: [new d.Paragraph({ alignment: d.AlignmentType.CENTER, children: [new d.TextRun({ text: 'Bu otobüs için kayıtlı misafir yok.', italics: true, color: '64748B', font: 'Arial' })] })]
+          })]
+        })];
+    return new d.Table({
+      width: { size: 100, type: d.WidthType.PERCENTAGE },
+      layout: d.TableLayoutType.FIXED,
+      rows: [headerRow, ...dataRows]
+    });
+  };
+
+  const documentChildren = [
+    new d.Paragraph({
+      alignment: d.AlignmentType.CENTER,
+      spacing: { after: 80 },
+      children: [new d.TextRun({ text: 'ODAMATİK OTOBÜS MİSAFİR LİSTELERİ', bold: true, size: 26, color: '1E3A8A', font: 'Arial' })]
+    }),
+    new d.Paragraph({
+      alignment: d.AlignmentType.CENTER,
+      spacing: { after: 160 },
+      children: [new d.TextRun({
+        text: `Oluşturulma: ${new Date().toLocaleString('tr-TR')}  •  ${summary.roomCount} oda  •  ${summary.guestCount} misafir`,
+        size: 16, color: '475569', font: 'Arial'
+      })]
+    })
+  ];
+  groups.forEach((group, groupIndex) => {
+    documentChildren.push(new d.Paragraph({
+      pageBreakBefore: groupIndex > 0,
+      alignment: d.AlignmentType.CENTER,
+      spacing: { before: 80, after: 100 },
+      children: [new d.TextRun({ text: group.code, bold: true, size: 30, color: '111827', font: 'Arial' })]
+    }));
+    documentChildren.push(wordTable(group));
   });
-  const dataRows = rows.map((row, rowIndex) => new d.TableRow({
-    cantSplit: true,
-    children: reportRowValues(row).map((value, index) => wordCell(value, index, false, rowIndex % 2 === 1))
-  }));
 
   const documentFile = new d.Document({
     creator: 'OdaMatik',
@@ -812,63 +915,51 @@ async function exportReportWord(rows) {
           margin: { top: 540, right: 540, bottom: 540, left: 540 }
         }
       },
-      children: [
-        new d.Paragraph({
-          alignment: d.AlignmentType.CENTER,
-          spacing: { after: 100 },
-          children: [new d.TextRun({ text: 'ODAMATİK ODA VE MİSAFİR RAPORU', bold: true, size: 30, color: '1E3A8A', font: 'Arial' })]
-        }),
-        new d.Paragraph({
-          alignment: d.AlignmentType.CENTER,
-          spacing: { after: 220 },
-          children: [new d.TextRun({
-            text: `Oluşturulma: ${new Date().toLocaleString('tr-TR')}  •  ${summary.roomCount} oda  •  ${summary.bedCount} yatak  •  ${summary.guestCount} misafir`,
-            size: 17, color: '475569', font: 'Arial'
-          })]
-        }),
-        new d.Table({
-          width: { size: 100, type: d.WidthType.PERCENTAGE },
-          layout: d.TableLayoutType.FIXED,
-          rows: [headerRow, ...dataRows]
-        })
-      ]
+      children: documentChildren
     }]
   });
   const blob = await d.Packer.toBlob(documentFile);
   downloadBlob(blob, reportFileName('docx'));
 }
 
-function createVisualReportElement(rows, pageLabel = '') {
+function createVisualReportElement(groups, pageLabel = '') {
   const summary = getReportSummary(getReportRows());
   const container = document.createElement('div');
   container.id = 'visualReportCapture';
-  container.style.cssText = 'position:absolute;left:-10000px;top:0;width:1400px;height:auto;min-height:0;margin:0;padding:24px;overflow:visible;background:#fff;color:#1f2937;font-family:Arial,sans-serif;box-sizing:border-box;pointer-events:none;';
-  const bodyRows = rows.map((row, index) => {
-    const background = index % 2 ? '#f8fafc' : '#ffffff';
-    const statusColor = row.status === 'Dolu' ? '#92400e' : (row.status === 'Boş' ? '#047857' : '#6b21a8');
-    return `<tr style="background:${background};break-inside:avoid;page-break-inside:avoid;">
-      ${reportRowValues(row).map((value, cellIndex) => `<td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:${cellIndex === 6 ? '12px' : '13px'};line-height:1.2;vertical-align:top;word-break:break-word;overflow:visible;${cellIndex === 7 ? `font-weight:700;color:${statusColor};` : ''}">${escapeHtml(value)}</td>`).join('')}
-    </tr>`;
+  container.style.cssText = 'position:absolute;left:-10000px;top:0;width:1200px;height:auto;min-height:0;margin:0;padding:22px;overflow:visible;background:#fff;color:#111827;font-family:Arial,sans-serif;box-sizing:border-box;pointer-events:none;';
+  const groupSections = groups.map((group, groupIndex) => {
+    const sequenceOffset = group.sequenceOffset || 0;
+    const bodyRows = group.rows.map((row, index) => {
+      const background = index % 2 ? '#f8fafc' : '#ffffff';
+      return `<tr style="background:${background};break-inside:avoid;page-break-inside:avoid;">
+        ${reportRowValues(row, sequenceOffset + index + 1).map(value => `<td style="border:1px solid #334155;padding:5px 7px;font-size:13px;line-height:1.15;vertical-align:middle;word-break:break-word;overflow:visible;">${escapeHtml(value)}</td>`).join('')}
+      </tr>`;
+    }).join('');
+    const emptyRow = `<tr><td colspan="6" style="border:1px solid #334155;padding:12px;text-align:center;color:#64748b;font-size:13px;font-style:italic;">Bu otobüs için kayıtlı misafir yok.</td></tr>`;
+    return `<section style="margin:${groupIndex ? '24px' : '0'} 0 0;break-inside:avoid-page;page-break-inside:avoid;">
+      <div style="font-family:Georgia,serif;font-size:31px;font-weight:700;text-align:center;color:#111827;margin:0 0 8px;">${escapeHtml(group.code)}</div>
+      <table style="width:100%;height:auto;min-height:0;margin:0;border-collapse:collapse;table-layout:fixed;overflow:visible;break-after:auto;page-break-after:auto;">
+        <colgroup><col style="width:6%"><col style="width:12%"><col style="width:18%"><col style="width:26%"><col style="width:18%"><col style="width:20%"></colgroup>
+        <thead style="break-after:avoid;page-break-after:avoid;"><tr style="background:#dbeafe;color:#111827;break-inside:avoid;page-break-inside:avoid;">${reportHeaders().map(header => `<th style="border:1px solid #334155;padding:6px 7px;font-family:Georgia,serif;font-size:13px;text-align:center;line-height:1.1;">${escapeHtml(header)}</th>`).join('')}</tr></thead>
+        <tbody>${bodyRows || emptyRow}</tbody>
+      </table>
+    </section>`;
   }).join('');
   container.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1e3a8a;padding-bottom:10px;margin:0 0 12px;break-after:avoid;page-break-after:avoid;">
-      <div><div style="font-size:26px;font-weight:800;color:#1e3a8a;">ODAMATİK ODA VE MİSAFİR RAPORU</div><div style="font-size:12px;color:#64748b;margin-top:4px;">Oluşturulma: ${escapeHtml(new Date().toLocaleString('tr-TR'))}</div></div>
-      <div style="text-align:right;font-size:13px;color:#475569;line-height:1.55;"><strong>${summary.roomCount}</strong> oda &nbsp;•&nbsp; <strong>${summary.bedCount}</strong> yatak &nbsp;•&nbsp; <strong>${summary.guestCount}</strong> misafir${pageLabel ? `<br>${escapeHtml(pageLabel)}` : ''}</div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1px solid #94a3b8;padding-bottom:7px;margin:0 0 10px;break-after:avoid;page-break-after:avoid;">
+      <div><div style="font-size:17px;font-weight:800;color:#1e3a8a;">ODAMATİK MİSAFİR LİSTESİ</div><div style="font-size:10px;color:#64748b;margin-top:3px;">Oluşturulma: ${escapeHtml(new Date().toLocaleString('tr-TR'))}</div></div>
+      <div style="text-align:right;font-size:11px;color:#475569;line-height:1.45;"><strong>${summary.roomCount}</strong> oda &nbsp;•&nbsp; <strong>${summary.guestCount}</strong> misafir${pageLabel ? `<br>${escapeHtml(pageLabel)}` : ''}</div>
     </div>
-    <table style="width:100%;height:auto;min-height:0;margin:0;border-collapse:collapse;table-layout:fixed;overflow:visible;break-after:auto;page-break-after:auto;">
-      <colgroup><col style="width:18%"><col style="width:7%"><col style="width:7%"><col style="width:18%"><col style="width:12%"><col style="width:12%"><col style="width:19%"><col style="width:7%"></colgroup>
-      <thead style="break-after:avoid;page-break-after:avoid;"><tr style="background:#1e3a8a;color:white;break-inside:avoid;page-break-inside:avoid;">${reportHeaders().map(header => `<th style="border:1px solid #1e3a8a;padding:8px 7px;font-size:12px;text-align:left;line-height:1.15;">${escapeHtml(header)}</th>`).join('')}</tr></thead>
-      <tbody>${bodyRows}</tbody>
-    </table>
-    <div style="margin:8px 0 0;text-align:right;color:#94a3b8;font-size:10px;break-before:avoid;page-break-before:avoid;">OdaMatik • Oda Yerleşim ve Misafir Yönetim Sistemi</div>`;
+    ${groupSections}
+    <div style="margin:7px 0 0;text-align:right;color:#94a3b8;font-size:9px;break-before:avoid;page-break-before:avoid;">OdaMatik • Oda Yerleşim ve Misafir Yönetim Sistemi</div>`;
   document.body.appendChild(container);
   return container;
 }
 
-async function visualReportCanvas(rows, pageLabel = '', scale = 1.5) {
-  const element = createVisualReportElement(rows, pageLabel);
+async function visualReportCanvas(groups, pageLabel = '', scale = 1.5) {
+  const element = createVisualReportElement(groups, pageLabel);
   try {
-    const width = Math.ceil(element.scrollWidth || 1400);
+    const width = Math.ceil(element.scrollWidth || 1200);
     const height = Math.ceil(element.scrollHeight);
     if (height < 1) throw new Error('Rapor görünümü ölçülemedi.');
     return await window.html2canvas(element, {
@@ -904,7 +995,7 @@ function paginateReportRows(rows) {
   const pages = [];
   let currentPage = [];
   let usedUnits = 0;
-  const maxUnits = 24;
+  const maxUnits = 36;
 
   rows.forEach(row => {
     const longestText = Math.max(
@@ -926,7 +1017,7 @@ function paginateReportRows(rows) {
 }
 
 async function exportReportJpg(rows) {
-  const canvas = await visualReportCanvas(rows, '', 1.5);
+  const canvas = await visualReportCanvas(getBusReportGroups(rows), '', 1.5);
   const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.94));
   if (!blob) throw new Error('JPG dosyası oluşturulamadı.');
   downloadBlob(blob, reportFileName('jpg'));
@@ -934,16 +1025,23 @@ async function exportReportJpg(rows) {
 
 async function exportReportPdf(rows) {
   const { jsPDF } = window.jspdf;
-  const pages = paginateReportRows(rows);
+  const pages = [];
+  getBusReportGroups(rows).forEach(group => {
+    let sequenceOffset = 0;
+    paginateReportRows(group.rows).forEach(pageRows => {
+      pages.push({ code: group.code, rows: pageRows, sequenceOffset });
+      sequenceOffset += pageRows.length;
+    });
+  });
   if (!pages.length) throw new Error('PDF için rapor satırı bulunamadı.');
   const pageCount = pages.length;
-  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
 
   for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
-    const pageRows = pages[pageIndex];
-    if (!pageRows.length) continue;
-    const canvas = await visualReportCanvas(pageRows, `Sayfa ${pageIndex + 1} / ${pageCount}`, 1.35);
-    if (pageIndex > 0) pdf.addPage('a4', 'landscape');
+    const page = pages[pageIndex];
+    if (!page.rows.length) continue;
+    const canvas = await visualReportCanvas([page], `Sayfa ${pageIndex + 1} / ${pageCount}`, 1.35);
+    if (pageIndex > 0) pdf.addPage('a4', 'portrait');
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 8;

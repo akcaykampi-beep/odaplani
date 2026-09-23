@@ -212,23 +212,23 @@
       </div>
     </section>
 
-    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 no-print">
-      <div class="flex flex-wrap items-center gap-2.5 flex-1">
-        <div class="relative min-w-[200px] flex-1 max-w-sm">
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 no-print">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-[minmax(260px,1.5fr)_repeat(3,minmax(160px,1fr))_auto] gap-3 items-stretch">
+        <div class="relative sm:col-span-2 lg:col-span-1 xl:col-span-1">
           <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-          <input id="searchInput" oninput="applyFilters()" type="text" placeholder="Misafir adı, aile veya oda no ara..." class="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+          <input id="searchInput" oninput="applyFilters()" type="text" placeholder="Misafir adı, aile veya oda ara..." class="h-10 w-full pl-9 pr-4 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
         </div>
-        <select id="filterBlock" onchange="applyFilters()" class="text-sm py-2 px-3 rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        <select id="filterBlock" onchange="applyFilters()" class="h-10 w-full text-sm px-3 rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
           <option value="ALL">Tüm Bloklar</option>
         </select>
-        <select id="filterStatus" onchange="applyFilters()" class="text-sm py-2 px-3 rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        <select id="filterStatus" onchange="applyFilters()" class="h-10 w-full text-sm px-3 rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
           <option value="ALL">Tüm Durumlar</option>
           <option value="EMPTY">Yalnızca Boş Odalar</option>
           <option value="OCCUPIED">Yalnızca Dolu Odalar</option>
           <option value="STAFF">Personel Odaları</option>
           <option value="ACCESSIBLE">Engelli Rampalı Odalar</option>
         </select>
-        <select id="filterCapacity" onchange="applyFilters()" class="text-sm py-2 px-3 rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        <select id="filterCapacity" onchange="applyFilters()" class="h-10 w-full text-sm px-3 rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
           <option value="ALL">Tüm Kapasiteler</option>
           <option value="2">2 Kişilik</option>
           <option value="3">3 Kişilik</option>
@@ -236,16 +236,16 @@
           <option value="5">5 Kişilik</option>
           <option value="6">6+ Kişilik</option>
         </select>
-      </div>
-      <div class="flex items-center gap-2">
-        <button onclick="openModal('waitingListModal')" class="relative inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 transition">
-          <i class="fa-solid fa-clock-rotate-left text-amber-500"></i>
-          <span>Bekleme Listesi</span>
-          <span id="waitingCountBadge" class="bg-amber-500 text-white text-[11px] font-bold px-1.5 py-0.2 rounded-full">0</span>
-        </button>
-        <button onclick="openModal('addRoomModal')" class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-dashed border-slate-400 hover:border-slate-600 text-slate-700 hover:bg-slate-50 transition">
-          <i class="fa-solid fa-plus text-xs"></i><span>Oda Ekle</span>
-        </button>
+        <div class="grid grid-cols-2 gap-2 sm:col-span-2 lg:col-span-4 xl:col-span-1">
+          <button onclick="openModal('waitingListModal')" class="relative h-10 inline-flex items-center justify-center gap-2 px-3 text-sm font-medium rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 transition whitespace-nowrap">
+            <i class="fa-solid fa-clock-rotate-left text-amber-500"></i>
+            <span>Bekleme Listesi</span>
+            <span id="waitingCountBadge" class="bg-amber-500 text-white text-[11px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+          </button>
+          <button onclick="openModal('addRoomModal')" class="h-10 inline-flex items-center justify-center gap-1.5 px-3 text-sm font-medium rounded-lg border border-dashed border-slate-400 hover:border-slate-600 text-slate-700 hover:bg-slate-50 transition whitespace-nowrap">
+            <i class="fa-solid fa-plus text-xs"></i><span>Oda Ekle</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -258,6 +258,13 @@
 
     <div id="blocksContainer" class="space-y-8"></div>
   </main>
+
+  <!-- Oda ve Misafir Düzenleme Modalı -->
+  <div id="roomEditModal" onclick="if (event.target === this) cancelInlineEdit()" class="no-print fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 z-50 hidden">
+    <div class="w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-2xl shadow-2xl" role="dialog" aria-modal="true" aria-label="Oda ve misafir bilgilerini düzenle">
+      <div id="roomEditModalContent"></div>
+    </div>
+  </div>
 
   <!-- Aile Ekle Modal -->
   <div id="addFamilyModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
@@ -325,8 +332,8 @@
       <form onsubmit="handleCreateRoom(event)" class="p-6 space-y-4 text-sm">
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Oda Numarası *</label>
-            <input type="number" id="newRoomNo" required min="1" max="999" placeholder="Örn: 51" class="w-full px-3.5 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500" />
+            <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Oda Adı / Numarası *</label>
+            <input type="text" id="newRoomNo" required maxlength="40" placeholder="Örn: 51 veya A3" class="w-full px-3.5 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
             <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Yatak Kapasitesi *</label>

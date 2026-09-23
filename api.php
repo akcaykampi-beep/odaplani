@@ -40,14 +40,16 @@ function input(): array
 function fullState(PDO $pdo): array
 {
     // Odalar + misafirler
-    $rooms = $pdo->query('SELECT * FROM rooms ORDER BY no ASC')->fetchAll();
+    $rooms = $pdo->query('SELECT * FROM rooms')->fetchAll();
     if ($rooms === false) $rooms = [];
+    usort($rooms, fn($a, $b) => strnatcasecmp((string) $a['no'], (string) $b['no']));
     $guestsByRoom = [];
-    $gstmt = $pdo->query('SELECT room_id, name, tc, bus_code, note FROM room_guests ORDER BY sort ASC, id ASC');
+    $gstmt = $pdo->query('SELECT room_id, name, tc, phone, bus_code, note FROM room_guests ORDER BY sort ASC, id ASC');
     foreach ($gstmt as $g) {
         $guestsByRoom[$g['room_id']][] = [
             'name'    => $g['name'],
             'tc'      => $g['tc'] ?? '',
+            'phone'   => $g['phone'] ?? '',
             'busCode' => $g['bus_code'] ?? '',
             'notes'   => $g['note'] ?? '',
             'note'    => $g['note'] ?? '', // eski istemciler için
@@ -57,7 +59,7 @@ function fullState(PDO $pdo): array
     $roomsOut = array_map(function ($r) use ($guestsByRoom) {
         return [
             'id'         => (int) $r['id'],
-            'no'         => (int) $r['no'],
+            'no'         => (string) $r['no'],
             'block'      => $r['block'],
             'capacity'   => (int) $r['capacity'],
             'hasRamp'    => (bool) $r['has_ramp'],
@@ -96,32 +98,37 @@ function okState(PDO $pdo, string $message = ''): void
     jsonOut(['ok' => true, 'message' => $message, 'state' => fullState($pdo)]);
 }
 
-/** Oda numarasına göre varsayılan otobüs kodu (db.php ile aynı mantık) — sadece A-1, A-2, A-3. */
-function defaultBusCodeApi(int $roomNo): string
+/** Oda adına göre varsayılan otobüs kodu (db.php ile aynı mantık) — sadece A-1, A-2, A-3. */
+function defaultBusCodeApi(string $roomNo): string
 {
     $seq = ['A-1', 'A-2', 'A-3'];
-    return $seq[($roomNo - 1) % count($seq)];
+    preg_match('/\d+/', $roomNo, $match);
+    $index = isset($match[0])
+        ? max(0, (int) $match[0] - 1)
+        : array_sum(array_map('ord', str_split($roomNo)));
+    return $seq[$index % count($seq)];
 }
 
 /**
  * Bir odanın misafir listesini toptan yeniden yazar.
- * $guests öğeleri düz metin (isim) veya ['name','tc','busCode','notes'] dizisi olabilir.
+ * $guests öğeleri düz metin (isim) veya ['name','tc','phone','busCode','notes'] dizisi olabilir.
  */
 function setRoomGuests(PDO $pdo, int $roomId, array $guests): void
 {
     // Odanın numarasını varsayılan otobüs kodu için al
     $rs = $pdo->prepare('SELECT no FROM rooms WHERE id = ?');
     $rs->execute([$roomId]);
-    $roomNo = (int) ($rs->fetchColumn() ?: 0);
-    $defBus = $roomNo > 0 ? defaultBusCodeApi($roomNo) : '';
+    $roomNo = trim((string) ($rs->fetchColumn() ?: ''));
+    $defBus = $roomNo !== '' ? defaultBusCodeApi($roomNo) : '';
 
     $pdo->prepare('DELETE FROM room_guests WHERE room_id = ?')->execute([$roomId]);
-    $ins = $pdo->prepare('INSERT INTO room_guests (room_id, name, tc, bus_code, note, sort) VALUES (?,?,?,?,?,?)');
+    $ins = $pdo->prepare('INSERT INTO room_guests (room_id, name, tc, phone, bus_code, note, sort) VALUES (?,?,?,?,?,?,?)');
     $sort = 0;
     foreach ($guests as $g) {
         if (is_array($g)) {
             $name = trim((string) ($g['name'] ?? ''));
             $tc   = trim((string) ($g['tc'] ?? ''));
+            $phone = trim((string) ($g['phone'] ?? ''));
             $hasBusValue = array_key_exists('busCode', $g) || array_key_exists('bus', $g);
             $bus  = trim((string) ($g['busCode'] ?? $g['bus'] ?? ''));
             // "note" eski istemciler için geriye dönük uyumluluk sağlar.
@@ -129,6 +136,7 @@ function setRoomGuests(PDO $pdo, int $roomId, array $guests): void
         } else {
             $name = trim((string) $g);
             $tc   = '';
+            $phone = '';
             $hasBusValue = false;
             $bus  = '';
             $note = '';
@@ -138,6 +146,7 @@ function setRoomGuests(PDO $pdo, int $roomId, array $guests): void
             $roomId,
             $name,
             $tc !== '' ? $tc : null,
+            $phone !== '' ? $phone : null,
             $bus !== '' ? $bus : ($hasBusValue ? null : ($defBus !== '' ? $defBus : null)),
             $note !== '' ? $note : null,
             $sort++,
@@ -169,14 +178,17 @@ try {
 
         /* === ODA EKLE === */
         case 'add_room': {
-            $no    = (int) ($req['no'] ?? 0);
+            $no    = trim((string) ($req['no'] ?? ''));
             $cap   = (int) ($req['capacity'] ?? 0);
             $block = trim((string) ($req['block'] ?? ''));
             $ramp  = !empty($req['hasRamp']) ? 1 : 0;
             $staff = !empty($req['isStaff']) ? 1 : 0;
 
-            if ($no <= 0 || $cap <= 0 || $block === '') {
-                fail('Oda numarası, kapasite ve blok zorunludur.');
+            if ($no === '' || $cap <= 0 || $block === '') {
+                fail('Oda adı/numarası, kapasite ve blok zorunludur.');
+            }
+            if ((function_exists('mb_strlen') ? mb_strlen($no) : strlen($no)) > 40) {
+                fail('Oda adı/numarası en fazla 40 karakter olabilir.');
             }
             $chk = $pdo->prepare('SELECT COUNT(*) FROM rooms WHERE no = ?');
             $chk->execute([$no]);
@@ -204,14 +216,17 @@ try {
             $room  = getRoom($pdo, $id);
             if (!$room) fail('Oda bulunamadı.', 404);
 
-            $no    = (int) ($req['no'] ?? $room['no']);
+            $no    = trim((string) ($req['no'] ?? $room['no']));
             $cap   = (int) ($req['capacity'] ?? $room['capacity']);
             $block = trim((string) ($req['block'] ?? $room['block']));
             $ramp  = array_key_exists('hasRamp', $req) ? (!empty($req['hasRamp']) ? 1 : 0) : (int) $room['has_ramp'];
             $staff = array_key_exists('isStaff', $req) ? (!empty($req['isStaff']) ? 1 : 0) : (int) $room['is_staff'];
 
-            if ($no <= 0 || $cap <= 0 || $block === '') {
-                fail('Oda numarası, kapasite ve blok zorunludur.');
+            if ($no === '' || $cap <= 0 || $block === '') {
+                fail('Oda adı/numarası, kapasite ve blok zorunludur.');
+            }
+            if ((function_exists('mb_strlen') ? mb_strlen($no) : strlen($no)) > 40) {
+                fail('Oda adı/numarası en fazla 40 karakter olabilir.');
             }
             // Numara çakışması (kendisi hariç)
             $chk = $pdo->prepare('SELECT COUNT(*) FROM rooms WHERE no = ? AND id <> ?');
@@ -291,16 +306,19 @@ try {
             $room = getRoom($pdo, $id);
             if (!$room) fail('Oda bulunamadı.', 404);
 
-            $no    = (int) ($req['no'] ?? $room['no']);
+            $no    = trim((string) ($req['no'] ?? $room['no']));
             $cap   = (int) ($req['capacity'] ?? $room['capacity']);
             $block = trim((string) ($req['block'] ?? $room['block']));
             $ramp  = array_key_exists('hasRamp', $req) ? (!empty($req['hasRamp']) ? 1 : 0) : (int) $room['has_ramp'];
-            if ($no <= 0)  fail('Oda numarası geçerli olmalıdır.');
+            if ($no === '') fail('Oda adı/numarası boş bırakılamaz.');
+            if ((function_exists('mb_strlen') ? mb_strlen($no) : strlen($no)) > 40) {
+                fail('Oda adı/numarası en fazla 40 karakter olabilir.');
+            }
             if ($cap <= 0) fail('Yatak sayısı geçerli olmalıdır.');
             if ($block === '') fail('Blok / kat bilgisi boş bırakılamaz.');
 
             // Oda numarası değiştiyse benzersizliği doğrula
-            if ($no !== (int) $room['no']) {
+            if ($no !== (string) $room['no']) {
                 $chk = $pdo->prepare('SELECT COUNT(*) FROM rooms WHERE no = ? AND id <> ?');
                 $chk->execute([$no, $id]);
                 if ((int) $chk->fetchColumn() > 0) {
@@ -545,7 +563,7 @@ function findBestRoom(PDO $pdo, int $count, bool $needsRamp): ?int
         if (!$needsRamp && $a['has_ramp'] != $b['has_ramp']) {
             return $a['has_ramp'] <=> $b['has_ramp'];
         }
-        return (int) $a['no'] <=> (int) $b['no'];
+        return strnatcasecmp((string) $a['no'], (string) $b['no']);
     });
 
     return (int) $rooms[0]['id'];

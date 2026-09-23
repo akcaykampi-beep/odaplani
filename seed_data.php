@@ -56,18 +56,18 @@ return [
 
         // İKİ KATLI KIRMIZI BLOK (37 - 50)
         ['no'=>37,'block'=>'İKİ KATLI KIRMIZI BLOK','capacity'=>5,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>'Yiğit & Kara Ailesi','guests'=>['Ali Yiğit','Gülperi Yiğit','Ebru Yiğit','Ali Asker Kara','Gülsüm Kara'],'notes'=>''],
-        // VIP ODALAR (44 - 54) : vip alt 1-5, vip alt 7-8, vip 1-4 — hepsi tek blok altında
+        // VIP ODALAR (44 - 54): VIP ALT 1-8, ardından VIP 1-3 — hepsi tek blok altında
         ['no'=>44,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP ALT 1'],
         ['no'=>45,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP ALT 2'],
         ['no'=>46,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP ALT 3'],
         ['no'=>47,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP ALT 4'],
         ['no'=>48,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP ALT 5'],
-        ['no'=>49,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP ALT 7'],
-        ['no'=>50,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP ALT 8'],
-        ['no'=>51,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP 1'],
-        ['no'=>52,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP 2'],
-        ['no'=>53,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP 3'],
-        ['no'=>54,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP 4'],
+        ['no'=>49,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP ALT 6'],
+        ['no'=>50,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP ALT 7'],
+        ['no'=>51,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP ALT 8'],
+        ['no'=>52,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP 1'],
+        ['no'=>53,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP 2'],
+        ['no'=>54,'block'=>'VIP ODALAR','capacity'=>2,'hasRamp'=>false,'isStaff'=>false,'guestGroup'=>null,'guests'=>[],'notes'=>'VIP 3'],
     ],
 
     'waiting' => [

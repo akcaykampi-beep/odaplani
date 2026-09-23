@@ -6,9 +6,14 @@ CREATE DATABASE IF NOT EXISTS odamatik
   CHARACTER SET utf8mb4 COLLATE utf8mb4_turkish_ci;
 USE odamatik;
 
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  name       VARCHAR(191) PRIMARY KEY,
+  applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci;
+
 CREATE TABLE IF NOT EXISTS rooms (
   id          INT AUTO_INCREMENT PRIMARY KEY,
-  no          INT NOT NULL,
+  no          VARCHAR(40) NOT NULL,
   block       VARCHAR(191) NOT NULL,
   capacity    INT NOT NULL DEFAULT 2,
   has_ramp    TINYINT(1) NOT NULL DEFAULT 0,
@@ -24,6 +29,7 @@ CREATE TABLE IF NOT EXISTS room_guests (
   room_id  INT NOT NULL,
   name     VARCHAR(191) NOT NULL,
   tc       VARCHAR(20) DEFAULT NULL,
+  phone    VARCHAR(30) DEFAULT NULL,
   bus_code VARCHAR(40) DEFAULT NULL,
   note     VARCHAR(255) DEFAULT NULL,
   sort     INT NOT NULL DEFAULT 0,
