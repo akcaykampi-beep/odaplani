@@ -43,12 +43,14 @@ function fullState(PDO $pdo): array
     $rooms = $pdo->query('SELECT * FROM rooms ORDER BY no ASC')->fetchAll();
     if ($rooms === false) $rooms = [];
     $guestsByRoom = [];
-    $gstmt = $pdo->query('SELECT room_id, name, tc, bus_code FROM room_guests ORDER BY sort ASC, id ASC');
+    $gstmt = $pdo->query('SELECT room_id, name, tc, bus_code, note FROM room_guests ORDER BY sort ASC, id ASC');
     foreach ($gstmt as $g) {
         $guestsByRoom[$g['room_id']][] = [
             'name'    => $g['name'],
             'tc'      => $g['tc'] ?? '',
             'busCode' => $g['bus_code'] ?? '',
+            'notes'   => $g['note'] ?? '',
+            'note'    => $g['note'] ?? '', // eski istemciler için
         ];
     }
 
@@ -103,7 +105,7 @@ function defaultBusCodeApi(int $roomNo): string
 
 /**
  * Bir odanın misafir listesini toptan yeniden yazar.
- * $guests öğeleri düz metin (isim) veya ['name','tc','busCode'] dizisi olabilir.
+ * $guests öğeleri düz metin (isim) veya ['name','tc','busCode','notes'] dizisi olabilir.
  */
 function setRoomGuests(PDO $pdo, int $roomId, array $guests): void
 {
@@ -114,24 +116,30 @@ function setRoomGuests(PDO $pdo, int $roomId, array $guests): void
     $defBus = $roomNo > 0 ? defaultBusCodeApi($roomNo) : '';
 
     $pdo->prepare('DELETE FROM room_guests WHERE room_id = ?')->execute([$roomId]);
-    $ins = $pdo->prepare('INSERT INTO room_guests (room_id, name, tc, bus_code, sort) VALUES (?,?,?,?,?)');
+    $ins = $pdo->prepare('INSERT INTO room_guests (room_id, name, tc, bus_code, note, sort) VALUES (?,?,?,?,?,?)');
     $sort = 0;
     foreach ($guests as $g) {
         if (is_array($g)) {
             $name = trim((string) ($g['name'] ?? ''));
             $tc   = trim((string) ($g['tc'] ?? ''));
+            $hasBusValue = array_key_exists('busCode', $g) || array_key_exists('bus', $g);
             $bus  = trim((string) ($g['busCode'] ?? $g['bus'] ?? ''));
+            // "note" eski istemciler için geriye dönük uyumluluk sağlar.
+            $note = trim((string) ($g['notes'] ?? $g['note'] ?? ''));
         } else {
             $name = trim((string) $g);
             $tc   = '';
+            $hasBusValue = false;
             $bus  = '';
+            $note = '';
         }
         if ($name === '') continue;
         $ins->execute([
             $roomId,
             $name,
             $tc !== '' ? $tc : null,
-            $bus !== '' ? $bus : $defBus,
+            $bus !== '' ? $bus : ($hasBusValue ? null : ($defBus !== '' ? $defBus : null)),
+            $note !== '' ? $note : null,
             $sort++,
         ]);
     }
@@ -274,6 +282,65 @@ try {
 
             setRoomGuests($pdo, $id, $guests);
             okState($pdo, "Oda {$room['no']} misafir bilgileri güncellendi.");
+            break;
+        }
+
+        /* === SATIR İÇİ KAYDET (oda + misafirler tek atomik istekte) === */
+        case 'save_room': {
+            $id   = (int) ($req['id'] ?? 0);
+            $room = getRoom($pdo, $id);
+            if (!$room) fail('Oda bulunamadı.', 404);
+
+            $no    = (int) ($req['no'] ?? $room['no']);
+            $cap   = (int) ($req['capacity'] ?? $room['capacity']);
+            $block = trim((string) ($req['block'] ?? $room['block']));
+            $ramp  = array_key_exists('hasRamp', $req) ? (!empty($req['hasRamp']) ? 1 : 0) : (int) $room['has_ramp'];
+            if ($no <= 0)  fail('Oda numarası geçerli olmalıdır.');
+            if ($cap <= 0) fail('Yatak sayısı geçerli olmalıdır.');
+            if ($block === '') fail('Blok / kat bilgisi boş bırakılamaz.');
+
+            // Oda numarası değiştiyse benzersizliği doğrula
+            if ($no !== (int) $room['no']) {
+                $chk = $pdo->prepare('SELECT COUNT(*) FROM rooms WHERE no = ? AND id <> ?');
+                $chk->execute([$no, $id]);
+                if ((int) $chk->fetchColumn() > 0) {
+                    fail("Oda $no zaten mevcut! Farklı bir numara girin.");
+                }
+            }
+
+            $guests = is_array($req['guests'] ?? null) ? $req['guests'] : [];
+            $guestGroup = trim((string) ($req['guestGroup'] ?? $room['guest_group'] ?? ''));
+            if (!$room['is_staff'] && array_key_exists('guests', $req)) {
+                $firstGuestName = '';
+                foreach ($guests as $guest) {
+                    $candidate = is_array($guest)
+                        ? trim((string) ($guest['name'] ?? ''))
+                        : trim((string) $guest);
+                    if ($candidate !== '') { $firstGuestName = $candidate; break; }
+                }
+                if ($firstGuestName === '') {
+                    $guestGroup = '';
+                } elseif ($guestGroup === '') {
+                    $guestGroup = $firstGuestName;
+                }
+            }
+
+            $pdo->beginTransaction();
+            try {
+                if ($room['is_staff']) {
+                    $pdo->prepare('UPDATE rooms SET no = ?, capacity = ?, block = ?, has_ramp = ? WHERE id = ?')
+                        ->execute([$no, $cap, $block, $ramp, $id]);
+                } else {
+                    $pdo->prepare('UPDATE rooms SET no = ?, capacity = ?, block = ?, has_ramp = ?, guest_group = ? WHERE id = ?')
+                        ->execute([$no, $cap, $block, $ramp, $guestGroup !== '' ? $guestGroup : null, $id]);
+                    if (array_key_exists('guests', $req)) setRoomGuests($pdo, $id, $guests);
+                }
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
+            okState($pdo, "Oda $no güncellendi.");
             break;
         }
 

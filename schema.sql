@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS room_guests (
   name     VARCHAR(191) NOT NULL,
   tc       VARCHAR(20) DEFAULT NULL,
   bus_code VARCHAR(40) DEFAULT NULL,
+  note     VARCHAR(255) DEFAULT NULL,
   sort     INT NOT NULL DEFAULT 0,
   CONSTRAINT fk_guest_room FOREIGN KEY (room_id)
       REFERENCES rooms(id) ON DELETE CASCADE

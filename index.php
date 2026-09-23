@@ -23,11 +23,96 @@
     ::-webkit-scrollbar-track { background:#f1f5f9; }
     ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:9999px; }
     ::-webkit-scrollbar-thumb:hover { background:#94a3b8; }
+    @page { size: A4 landscape; margin: 8mm; }
     @media print {
-      .no-print { display:none !important; }
-      body { background:white !important; font-size:11px; }
-      .print-page-break { page-break-inside:avoid; }
-      .room-card { box-shadow:none !important; border:1px solid #94a3b8 !important; }
+      *, *::before, *::after {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        box-sizing: border-box !important;
+      }
+      html, body {
+        height: auto !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        background: #fff !important;
+      }
+      body { display: block !important; font-size: 10px !important; }
+      .no-print, #toastContainer { display: none !important; }
+      main {
+        display: block !important;
+        width: 100% !important;
+        max-width: none !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+      }
+      #blocksContainer {
+        display: block !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+      }
+      .print-report-header {
+        display: block !important;
+        margin: 0 0 4mm !important;
+        padding: 0 0 2mm !important;
+        break-after: avoid-page !important;
+        page-break-after: avoid !important;
+      }
+      .room-block {
+        margin: 0 0 4mm !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        break-inside: avoid-page !important;
+        page-break-inside: avoid !important;
+        break-before: auto !important;
+        break-after: auto !important;
+        page-break-before: auto !important;
+        page-break-after: auto !important;
+        box-shadow: none !important;
+      }
+      .room-block:last-child { margin-bottom: 0 !important; break-after: auto !important; page-break-after: auto !important; }
+      .room-block > div:last-child {
+        display: grid !important;
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: 3mm !important;
+        padding: 3mm !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+      }
+      .room-card {
+        margin: 0 !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        break-inside: avoid-page !important;
+        page-break-inside: avoid !important;
+        break-after: auto !important;
+        page-break-after: auto !important;
+        box-shadow: none !important;
+        border: 1px solid #94a3b8 !important;
+        transform: none !important;
+      }
+      .room-card:last-child { break-after: auto !important; page-break-after: auto !important; }
+      .room-card-body, .guest-list {
+        min-height: 0 !important;
+        height: auto !important;
+        overflow: visible !important;
+      }
+      .guest-entry {
+        min-height: 0 !important;
+        overflow: visible !important;
+        break-inside: avoid-page !important;
+        page-break-inside: avoid !important;
+      }
+      .print-page-break {
+        break-before: auto !important;
+        break-after: auto !important;
+        page-break-before: auto !important;
+        page-break-after: auto !important;
+      }
     }
   </style>
 </head>
@@ -60,10 +145,36 @@
           <span class="hidden md:inline">Akıllı Yerleştir</span>
           <span class="md:hidden">Oto Yerleştir</span>
         </button>
-        <button onclick="window.print()" class="p-2 sm:px-3 sm:py-2 text-xs sm:text-sm font-medium rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 transition" title="Yazdır veya PDF Kaydet">
-          <i class="fa-solid fa-print"></i>
-          <span class="hidden lg:inline ml-1.5">Rapor Yazdır</span>
-        </button>
+        <div class="relative" id="exportMenuWrapper">
+          <button onclick="toggleExportMenu(event)" class="p-2 sm:px-3 sm:py-2 text-xs sm:text-sm font-medium rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 transition inline-flex items-center" title="Raporu farklı biçimlerde indir" aria-haspopup="true" aria-expanded="false" id="exportMenuButton">
+            <i class="fa-solid fa-file-arrow-down"></i>
+            <span class="hidden lg:inline ml-1.5">Rapor İndir</span>
+            <i class="fa-solid fa-chevron-down text-[9px] ml-1.5 text-slate-400"></i>
+          </button>
+          <div id="exportMenu" class="hidden absolute right-0 top-full mt-2 w-64 rounded-xl border border-slate-200 bg-white shadow-xl overflow-hidden z-50" role="menu">
+            <div class="px-3 py-2 border-b border-slate-100 bg-slate-50">
+              <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Rapor Biçimi Seçin</p>
+            </div>
+            <div class="p-1.5 space-y-0.5">
+              <button type="button" onclick="downloadReport('pdf', this)" class="export-format-button w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-rose-50 text-left transition" role="menuitem">
+                <span class="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center"><i class="fa-solid fa-file-pdf"></i></span>
+                <span><strong class="block text-xs text-slate-800">PDF Raporu</strong><span class="text-[10px] text-slate-500">Sayfalı, yazdırmaya hazır</span></span>
+              </button>
+              <button type="button" onclick="downloadReport('xlsx', this)" class="export-format-button w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-emerald-50 text-left transition" role="menuitem">
+                <span class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-file-excel"></i></span>
+                <span><strong class="block text-xs text-slate-800">Excel (.xlsx)</strong><span class="text-[10px] text-slate-500">Filtrelenebilir yatak tablosu</span></span>
+              </button>
+              <button type="button" onclick="downloadReport('docx', this)" class="export-format-button w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-blue-50 text-left transition" role="menuitem">
+                <span class="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center"><i class="fa-solid fa-file-word"></i></span>
+                <span><strong class="block text-xs text-slate-800">Word (.docx)</strong><span class="text-[10px] text-slate-500">Düzenlenebilir tablo belgesi</span></span>
+              </button>
+              <button type="button" onclick="downloadReport('jpg', this)" class="export-format-button w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-amber-50 text-left transition" role="menuitem">
+                <span class="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center"><i class="fa-solid fa-file-image"></i></span>
+                <span><strong class="block text-xs text-slate-800">JPG Görseli</strong><span class="text-[10px] text-slate-500">Tek parça yüksek çözünürlük</span></span>
+              </button>
+            </div>
+          </div>
+        </div>
         <button onclick="openModal('settingsModal')" class="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition" title="Ayarlar & Veri Yönetimi">
           <i class="fa-solid fa-gear text-base"></i>
         </button>
@@ -140,7 +251,7 @@
 
     <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-    <div class="hidden print:block mb-4 pb-2 border-b border-slate-400">
+    <div class="print-report-header hidden print:block mb-4 pb-2 border-b border-slate-400">
       <h1 class="text-2xl font-black tracking-tight text-slate-900">ODA YERLEŞİM PLANI RAPORU</h1>
       <p class="text-xs text-slate-600">Oluşturulma Tarihi: <span id="printDate"></span> | Toplam Misafir: <span id="printGuestCount"></span></p>
     </div>
@@ -204,22 +315,6 @@
     </div>
   </div>
 
-  <!-- Oda Detay Modal -->
-  <div id="roomDetailModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
-    <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden border border-slate-100">
-      <div id="roomDetailHeader" class="px-6 py-4 border-b flex items-center justify-between text-white"></div>
-      <div class="p-6 space-y-5">
-        <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
-          <div class="text-xs space-y-0.5"><span class="text-slate-500">Blok Bilgisi</span><p id="roomDetailBlockName" class="font-bold text-slate-800 text-sm">-</p></div>
-          <div class="text-xs space-y-0.5 text-center"><span class="text-slate-500">Kapasite</span><p id="roomDetailCapacity" class="font-bold text-slate-800 text-sm">-</p></div>
-          <div class="text-xs space-y-0.5 text-right"><span class="text-slate-500">Özellik</span><p id="roomDetailFeatures" class="font-bold text-slate-800 text-sm">-</p></div>
-        </div>
-        <div id="roomDetailOccupancySection"></div>
-        <div id="roomDetailActions" class="flex items-center justify-between pt-4 border-t border-slate-200 flex-wrap gap-2"></div>
-      </div>
-    </div>
-  </div>
-
   <!-- Oda Ekle Modal -->
   <div id="addRoomModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
     <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100">
@@ -250,6 +345,11 @@
             <option value="İKİ KATLI KIRMIZI ALT KAT"></option>
             <option value="İKİ KATLI KIRMIZI BLOK"></option>
           </datalist>
+          <datalist id="busCodeList">
+            <option value="A-1"></option>
+            <option value="A-2"></option>
+            <option value="A-3"></option>
+          </datalist>
         </div>
         <div class="space-y-2 pt-2">
           <label class="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700"><input type="checkbox" id="newRoomRamp" class="rounded text-blue-600" /><span>♿ Engelliler İçin Rampalı / Uygun Giriş</span></label>
@@ -258,76 +358,6 @@
         <div class="pt-4 border-t flex justify-end gap-2">
           <button type="button" onclick="closeModal('addRoomModal')" class="px-4 py-2 border rounded-lg text-slate-600 hover:bg-slate-100">Vazgeç</button>
           <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-sm">Odayı Ekle</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Oda Düzenle (GÜNCELLE) Modal -->
-  <div id="editRoomModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
-    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100">
-      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-        <h3 class="font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-pen-to-square text-amber-600"></i> Oda Bilgilerini Güncelle</h3>
-        <button onclick="closeModal('editRoomModal')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
-      </div>
-      <form onsubmit="handleUpdateRoom(event)" class="p-6 space-y-4 text-sm">
-        <input type="hidden" id="editRoomId" />
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Oda Numarası *</label>
-            <input type="number" id="editRoomNo" required min="1" max="999" class="w-full px-3.5 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Yatak Kapasitesi *</label>
-            <input type="number" id="editRoomCap" required min="1" max="10" class="w-full px-3.5 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 font-semibold" />
-          </div>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Bulunduğu Blok / Kat *</label>
-          <input type="text" id="editRoomBlock" list="blockList" required class="w-full px-3.5 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500" />
-        </div>
-        <div class="space-y-2 pt-2">
-          <label class="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700"><input type="checkbox" id="editRoomRamp" class="rounded text-blue-600" /><span>♿ Engelliler İçin Rampalı / Uygun Giriş</span></label>
-          <label class="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700"><input type="checkbox" id="editRoomStaff" class="rounded text-indigo-600" /><span>🛠️ Personel Odası Olarak Ayır</span></label>
-        </div>
-        <div class="pt-4 border-t flex justify-end gap-2">
-          <button type="button" onclick="closeModal('editRoomModal')" class="px-4 py-2 border rounded-lg text-slate-600 hover:bg-slate-100">Vazgeç</button>
-          <button type="submit" class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg shadow-sm">Değişiklikleri Kaydet</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Misafir (Ad / TC / Otobüs Kodu) Düzenle Modal -->
-  <div id="editGuestsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
-    <div class="bg-white rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-100 max-h-[88vh] flex flex-col">
-      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-        <div class="flex items-center gap-2.5">
-          <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center"><i class="fa-solid fa-id-card"></i></div>
-          <div>
-            <h3 class="font-bold text-slate-800">Misafir Bilgilerini Düzenle</h3>
-            <p id="editGuestsRoomTitle" class="text-xs text-slate-500">-</p>
-          </div>
-        </div>
-        <button onclick="closeModal('editGuestsModal')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
-      </div>
-      <form onsubmit="handleUpdateGuests(event)" class="flex flex-col flex-1 overflow-hidden">
-        <input type="hidden" id="editGuestsRoomId" />
-        <div class="px-6 pt-4">
-          <div class="grid grid-cols-12 gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-            <span class="col-span-5">Ad Soyad</span>
-            <span class="col-span-3">TC Kimlik No</span>
-            <span class="col-span-3">Otobüs Kodu</span>
-            <span class="col-span-1"></span>
-          </div>
-        </div>
-        <div id="editGuestsContainer" class="px-6 space-y-2 overflow-y-auto flex-1"></div>
-        <div class="px-6 py-3">
-          <button type="button" onclick="addGuestRow()" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-dashed border-indigo-400 text-indigo-700 hover:bg-indigo-50 transition"><i class="fa-solid fa-plus text-xs"></i> Kişi Ekle</button>
-        </div>
-        <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
-          <button type="button" onclick="closeModal('editGuestsModal')" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition font-medium">İptal</button>
-          <button type="submit" class="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition shadow-sm">Kaydet</button>
         </div>
       </form>
     </div>

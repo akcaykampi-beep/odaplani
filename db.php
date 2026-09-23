@@ -149,6 +149,7 @@ function createSchema(PDO $pdo): void
             name     VARCHAR(191) NOT NULL,
             tc       VARCHAR(20) DEFAULT NULL,
             bus_code VARCHAR(40) DEFAULT NULL,
+            note     VARCHAR(255) DEFAULT NULL,
             sort     INT NOT NULL DEFAULT 0,
             CONSTRAINT fk_guest_room FOREIGN KEY (room_id)
                 REFERENCES rooms(id) ON DELETE CASCADE
@@ -158,6 +159,7 @@ function createSchema(PDO $pdo): void
     // Mevcut (eski) kurulumlar için sütunları güvenle ekle (migration)
     ensureColumn($pdo, 'room_guests', 'tc',       "ALTER TABLE room_guests ADD COLUMN tc VARCHAR(20) DEFAULT NULL AFTER name");
     ensureColumn($pdo, 'room_guests', 'bus_code', "ALTER TABLE room_guests ADD COLUMN bus_code VARCHAR(40) DEFAULT NULL AFTER tc");
+    ensureColumn($pdo, 'room_guests', 'note',     "ALTER TABLE room_guests ADD COLUMN note VARCHAR(255) DEFAULT NULL AFTER bus_code");
 
     // Bekleme listesi (aileler / gruplar)
     $pdo->exec("
@@ -205,7 +207,7 @@ function seedIfEmpty(PDO $pdo): void
          VALUES (:no, :block, :capacity, :has_ramp, :is_staff, :guest_group, :notes)'
     );
     $insGuest = $pdo->prepare(
-        'INSERT INTO room_guests (room_id, name, tc, bus_code, sort) VALUES (:room_id, :name, :tc, :bus_code, :sort)'
+        'INSERT INTO room_guests (room_id, name, tc, bus_code, note, sort) VALUES (:room_id, :name, :tc, :bus_code, :note, :sort)'
     );
 
     $pdo->beginTransaction();
@@ -231,10 +233,12 @@ function seedIfEmpty(PDO $pdo): void
                             $gName = trim((string) ($g['name'] ?? ''));
                             $gTc   = trim((string) ($g['tc'] ?? ''));
                             $gBus  = trim((string) ($g['bus'] ?? $g['busCode'] ?? ''));
+                            $gNote = trim((string) ($g['notes'] ?? $g['note'] ?? ''));
                         } else {
                             $gName = trim((string) $g);
                             $gTc   = '';
                             $gBus  = '';
+                            $gNote = '';
                         }
                         if ($gName === '') continue;
                         $insGuest->execute([
@@ -242,6 +246,7 @@ function seedIfEmpty(PDO $pdo): void
                             ':name'     => $gName,
                             ':tc'       => $gTc !== '' ? $gTc : null,
                             ':bus_code' => $gBus !== '' ? $gBus : $busCode,
+                            ':note'     => $gNote !== '' ? $gNote : null,
                             ':sort'     => $sort++,
                         ]);
                     }

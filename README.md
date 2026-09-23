@@ -34,8 +34,10 @@ uygulaması **PHP + MySQL veritabanı** ile ekle / sil / güncelle destekli hale
 ## Özellikler (Ekle / Sil / Güncelle)
 
 - **Oda Ekle** — "Oda Ekle" düğmesi → yeni oda veritabanına kaydedilir.
-- **Oda Güncelle** — bir odaya tıkla → "Düzenle" → no/kapasite/blok/rampa/personel güncellenir.
-- **Oda Sil** — oda detayında "Odayı Sil" → kalıcı olarak silinir (misafirleri de otomatik silinir).
+- **Yerinde Oda Güncelleme** — bir odaya tıklayın; ayrı pencere açılmadan oda no, yatak sayısı, blok ve rampa bilgisi kart üzerinde düzenlenir.
+- **Yerinde Misafir Güncelleme** — ad soyad, TC kimlik no, geliş otobüsü ve kısa sağlık/genel notu aynı oda kartında eklenir, değiştirilir veya silinir.
+- **Çok Biçimli Rapor** — oda ve yatak bazlı raporu doğrudan PDF, Excel (`.xlsx`), Word (`.docx`) veya JPG olarak indirir.
+- **Oda Sil** — seçili oda kartındaki "Odayı Sil" ile kalıcı olarak silinir (misafirleri de otomatik silinir).
 - **Aile/Grup Ekle** — bekleme listesine ekler, isteğe bağlı otomatik yerleştirir.
 - **Bekleme Listesinden Sil** — çöp kutusu simgesi.
 - **Odaya Ata / Boşalt** — bekleme listesinden odaya atama, odayı boşaltma.
@@ -48,4 +50,7 @@ uygulaması **PHP + MySQL veritabanı** ile ekle / sil / güncelle destekli hale
 - Bağlantı **PDO** ile kurulur, tüm sorgular **prepared statement** (SQL injection'a karşı güvenli).
 - Karakter seti `utf8mb4_turkish_ci` — Türkçe karakterler (İ, ş, ğ, ç...) doğru saklanır.
 - API her işlemden sonra güncel tüm durumu döndürür; arayüz tek noktadan yeniden çizilir.
+- Oda ve misafir değişiklikleri `save_room` işlemiyle tek veritabanı transaction'ı içinde kaydedilir.
+- Misafir modelindeki `notes` alanı (veritabanında `room_guests.note`) en fazla 255 karakterlik sağlık durumu veya genel açıklama saklar.
+- Dışa aktarma kitaplıkları yalnızca ihtiyaç anında yüklenir: SheetJS (Excel), docx (Word), html2canvas (JPG/PDF) ve jsPDF (PDF).
 - Tablolar: `rooms`, `room_guests`, `waiting_list`, `waiting_members` (foreign key + ON DELETE CASCADE).
