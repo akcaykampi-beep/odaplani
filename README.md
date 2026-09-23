@@ -36,7 +36,7 @@ uygulaması **PHP + MySQL veritabanı** ile ekle / sil / güncelle destekli hale
 - **Oda Ekle** — "Oda Ekle" düğmesi → yeni oda veritabanına kaydedilir.
 - **Modalda Oda Güncelleme** — bir odaya tıklayın; harf ve rakam içerebilen oda adı/numarası, yatak sayısı, blok ve rampa bilgisi geniş düzenleme penceresinde açılır.
 - **Modalda Misafir Güncelleme** — ad soyad, TC kimlik no, telefon, A‑1/A‑2/A‑3 geliş otobüsü ve kısa sağlık/genel notu aynı düzenleme penceresinde eklenir, değiştirilir veya silinir.
-- **Çok Biçimli Rapor** — A‑1, A‑2 ve A‑3 otobüslerine göre gruplanmış; sıra no, oda/yatak, TCKN, ad soyad, telefon ve not sütunlu listeyi PDF, Excel (`.xlsx`), Word (`.docx`) veya JPG olarak indirir.
+- **Çok Biçimli Rapor** — Excel çıktısında sıra no, TC, ad soyad, telefon, oda ve geliş otobüsü bilgilerini listeler; PDF çıktısında yalnızca oda yerleşimi ve misafir adlarını tek yatay A4 sayfada gösterir. Word (`.docx`) ve JPG çıktıları da desteklenir.
 - **Oda Sil** — seçili oda kartındaki "Odayı Sil" ile kalıcı olarak silinir (misafirleri de otomatik silinir).
 - **Aile/Grup Ekle** — bekleme listesine ekler, isteğe bağlı otomatik yerleştirir.
 - **Bekleme Listesinden Sil** — çöp kutusu simgesi.

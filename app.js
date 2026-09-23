@@ -721,6 +721,14 @@ function reportRowValues(row, sequence = 1) {
   return [sequence, `${row.roomNo} / ${row.bedNo}`, row.nationalId, row.guestName, row.phone, row.notes];
 }
 
+function excelReportHeaders() {
+  return ['Sıra No', 'TC', 'Ad Soyad', 'Telefon No', 'Oda Numarası', 'Geldiği Otobüs Kodu'];
+}
+
+function excelReportRowValues(row, sequence = 1) {
+  return [sequence, row.nationalId, row.guestName, row.phone, row.roomNo, row.busInfo];
+}
+
 function getBusReportGroups(rows) {
   return BUS_CODES.map(code => ({
     code,
@@ -783,48 +791,41 @@ function exportReportExcel(rows) {
   const XLSX = window.XLSX;
   const generatedAt = new Date().toLocaleString('tr-TR');
   const workbook = XLSX.utils.book_new();
-
-  getBusReportGroups(rows).forEach(group => {
-    const tableData = [
-      [group.code],
-      [`Oluşturulma: ${generatedAt} | ${group.rows.length} misafir`],
-      [],
-      reportHeaders(),
-      ...group.rows.map((row, index) => reportRowValues(row, index + 1))
-    ];
-    const worksheet = XLSX.utils.aoa_to_sheet(tableData);
-    worksheet['!merges'] = [
-      XLSX.utils.decode_range('A1:F1'),
-      XLSX.utils.decode_range('A2:F2')
-    ];
-    worksheet['!cols'] = [
-      { wch: 7 }, { wch: 14 }, { wch: 18 },
-      { wch: 30 }, { wch: 20 }, { wch: 42 }
-    ];
-    worksheet['!rows'] = [{ hpt: 28 }, { hpt: 20 }, { hpt: 8 }, { hpt: 24 }];
-    worksheet['!autofilter'] = { ref: `A4:F${Math.max(4, group.rows.length + 4)}` };
-    XLSX.utils.book_append_sheet(workbook, worksheet, group.code);
-  });
-
-  const roomSummary = [
-    ['Blok / Kat', 'Oda No', 'Yatak Sayısı', 'Dolu Yatak', 'Boş Yatak', 'Oda Durumu'],
-    ...[...rooms].sort(compareRoomNames).map(room => {
-      const occupied = room.guests && room.guests.length ? room.guests.length : (room.guestGroup ? 1 : 0);
-      return [
-        room.block || '', room.no, room.capacity, room.isStaff ? 0 : occupied,
-        room.isStaff ? 0 : Math.max(0, room.capacity - occupied),
-        room.isStaff ? 'Personel' : (occupied ? 'Dolu' : 'Boş')
-      ];
-    })
+  const tableData = [
+    ['ODAMATİK MİSAFİR LİSTESİ'],
+    [`Oluşturulma: ${generatedAt} | ${rows.length} misafir`],
+    [],
+    excelReportHeaders(),
+    ...rows.map((row, index) => excelReportRowValues(row, index + 1))
   ];
-  const summarySheet = XLSX.utils.aoa_to_sheet(roomSummary);
-  summarySheet['!cols'] = [{ wch: 34 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
-  summarySheet['!autofilter'] = { ref: `A1:F${roomSummary.length}` };
+  const worksheet = XLSX.utils.aoa_to_sheet(tableData);
+  worksheet['!merges'] = [
+    XLSX.utils.decode_range('A1:F1'),
+    XLSX.utils.decode_range('A2:F2')
+  ];
+  worksheet['!cols'] = [
+    { wch: 10 }, { wch: 17 }, { wch: 32 },
+    { wch: 20 }, { wch: 17 }, { wch: 23 }
+  ];
+  worksheet['!rows'] = [{ hpt: 30 }, { hpt: 20 }, { hpt: 8 }, { hpt: 25 }];
+  worksheet['!autofilter'] = { ref: `A4:F${Math.max(4, rows.length + 4)}` };
 
-  XLSX.utils.book_append_sheet(workbook, summarySheet, 'Oda Özeti');
+  // TC ve telefon değerlerinin başındaki sıfırların korunması için hücreleri metin biçiminde tut.
+  rows.forEach((row, index) => {
+    const excelRow = index + 5;
+    ['B', 'D'].forEach(column => {
+      const cell = worksheet[`${column}${excelRow}`];
+      if (cell) {
+        cell.t = 's';
+        cell.z = '@';
+        cell.v = String(cell.v ?? '');
+      }
+    });
+  });
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Misafir Listesi');
   workbook.Props = {
-    Title: 'OdaMatik Oda ve Misafir Raporu',
-    Subject: 'Oda, yatak ve misafir bilgileri',
+    Title: 'OdaMatik Misafir Listesi',
+    Subject: 'Misafir iletişim, oda ve otobüs bilgileri',
     Author: 'OdaMatik',
     CreatedDate: new Date()
   };
@@ -1023,35 +1024,100 @@ async function exportReportJpg(rows) {
   downloadBlob(blob, reportFileName('jpg'));
 }
 
-async function exportReportPdf(rows) {
-  const { jsPDF } = window.jspdf;
-  const pages = [];
-  getBusReportGroups(rows).forEach(group => {
-    let sequenceOffset = 0;
-    paginateReportRows(group.rows).forEach(pageRows => {
-      pages.push({ code: group.code, rows: pageRows, sequenceOffset });
-      sequenceOffset += pageRows.length;
-    });
-  });
-  if (!pages.length) throw new Error('PDF için rapor satırı bulunamadı.');
-  const pageCount = pages.length;
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+function roomPlacementTitle(room) {
+  const isVipRoom = (room.block || '').toLocaleUpperCase('tr-TR').includes('VIP');
+  const vipName = isVipRoom ? String(room.notes || '').trim() : '';
+  return vipName || `Oda ${room.no}`;
+}
 
-  for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
-    const page = pages[pageIndex];
-    if (!page.rows.length) continue;
-    const canvas = await visualReportCanvas([page], `Sayfa ${pageIndex + 1} / ${pageCount}`, 1.35);
-    if (pageIndex > 0) pdf.addPage('a4', 'portrait');
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 8;
-    const maxWidth = pageWidth - (margin * 2);
-    const maxHeight = pageHeight - (margin * 2);
-    const ratio = Math.min(maxWidth / canvas.width, maxHeight / canvas.height);
-    const width = canvas.width * ratio;
-    const height = canvas.height * ratio;
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', (pageWidth - width) / 2, margin, width, height, undefined, 'FAST');
+function createRoomPlacementReportElement() {
+  const reportRooms = [...rooms].sort(compareRoomNames);
+  const columnCount = reportRooms.length > 48 ? 9 : (reportRooms.length > 35 ? 8 : 7);
+  const container = document.createElement('div');
+  container.id = 'roomPlacementCapture';
+  container.style.cssText = 'position:absolute;left:-10000px;top:0;width:1600px;height:auto;min-height:0;margin:0;padding:18px;overflow:visible;background:#fff;color:#111827;font-family:Arial,sans-serif;box-sizing:border-box;pointer-events:none;';
+
+  const roomCards = reportRooms.map(room => {
+    const listedGuests = room.guests && room.guests.length
+      ? room.guests
+      : (room.guestGroup ? [{ name: room.guestGroup }] : []);
+    const guestNames = listedGuests
+      .map(guest => guestName(guest).trim())
+      .filter(Boolean);
+    const occupied = guestNames.length > 0;
+    const borderColor = room.isStaff ? '#7e22ce' : (occupied ? '#d97706' : '#94a3b8');
+    const headerBackground = room.isStaff ? '#f3e8ff' : (occupied ? '#fef3c7' : '#f8fafc');
+    const namesHtml = guestNames.length
+      ? guestNames.map(name => `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(name)}</div>`).join('')
+      : '<div style="color:#94a3b8;font-style:italic;">Boş</div>';
+
+    return `<section style="border:1.5px solid ${borderColor};border-radius:6px;overflow:hidden;min-width:0;break-inside:avoid;page-break-inside:avoid;">
+      <div style="background:${headerBackground};border-bottom:1px solid ${borderColor};padding:4px 6px;">
+        <div style="font-size:13px;line-height:1.1;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(roomPlacementTitle(room))}</div>
+        <div style="margin-top:2px;font-size:7px;line-height:1;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(room.block || '')}</div>
+      </div>
+      <div style="padding:5px 6px;font-size:10px;line-height:1.25;font-weight:600;min-height:54px;">${namesHtml}</div>
+    </section>`;
+  }).join('');
+
+  container.innerHTML = `
+    <header style="display:flex;align-items:flex-end;justify-content:space-between;border-bottom:2px solid #1e3a8a;padding:0 0 7px;margin:0 0 9px;">
+      <div style="font-size:20px;font-weight:900;color:#1e3a8a;">ODA YERLEŞİM PLANI</div>
+      <div style="font-size:9px;color:#64748b;text-align:right;">${escapeHtml(new Date().toLocaleString('tr-TR'))}<br>${reportRooms.length} oda</div>
+    </header>
+    <main style="display:grid;grid-template-columns:repeat(${columnCount},minmax(0,1fr));gap:6px;align-items:stretch;">${roomCards}</main>`;
+  document.body.appendChild(container);
+  return container;
+}
+
+async function roomPlacementCanvas() {
+  const element = createRoomPlacementReportElement();
+  try {
+    const width = Math.ceil(element.scrollWidth || 1600);
+    const height = Math.ceil(element.scrollHeight);
+    if (height < 1) throw new Error('Oda yerleşim planı ölçülemedi.');
+    return await window.html2canvas(element, {
+      scale: 1.35,
+      backgroundColor: '#ffffff',
+      logging: false,
+      useCORS: true,
+      width,
+      height,
+      windowWidth: width,
+      windowHeight: height,
+      scrollX: 0,
+      scrollY: 0,
+      onclone: clonedDocument => {
+        const clone = clonedDocument.getElementById('roomPlacementCapture');
+        if (clone) {
+          clone.style.position = 'absolute';
+          clone.style.left = '0';
+          clone.style.top = '0';
+          clone.style.margin = '0';
+          clone.style.height = 'auto';
+          clone.style.minHeight = '0';
+          clone.style.overflow = 'visible';
+        }
+      }
+    });
+  } finally {
+    element.remove();
   }
+}
+
+async function exportReportPdf() {
+  const { jsPDF } = window.jspdf;
+  const canvas = await roomPlacementCanvas();
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 4;
+  const maxWidth = pageWidth - (margin * 2);
+  const maxHeight = pageHeight - (margin * 2);
+  const ratio = Math.min(maxWidth / canvas.width, maxHeight / canvas.height);
+  const width = canvas.width * ratio;
+  const height = canvas.height * ratio;
+  pdf.addImage(canvas.toDataURL('image/jpeg', 0.94), 'JPEG', (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, 'FAST');
   pdf.save(reportFileName('pdf'));
 }
 
