@@ -522,6 +522,195 @@ async function handleFamilyFormSubmit(event) {
   }
 }
 
+/* ---------- Excel'den misafir yükleme ---------- */
+
+/* Gizli dosya seçme penceresini açar. */
+function openGuestImportDialog() {
+  window.__pendingGuestImport = [];
+  const status = document.getElementById('importGuestStatus');
+  const preview = document.getElementById('importGuestPreview');
+  if (status) status.innerHTML = '';
+  if (preview) preview.innerHTML = '';
+  const submitBtn = document.getElementById('confirmGuestImportBtn');
+  if (submitBtn) submitBtn.disabled = true;
+  openModal('guestImportModal');
+  const input = document.getElementById('guestExcelInput');
+  if (input) input.click();
+}
+
+/* Seçilen Excel/CSV dosyasını SheetJS ile parse edip önizleme gösterir. */
+async function handleGuestFileSelect(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = ''; /* aynı dosya tekrar seçilebilsin */
+  if (!file) return;
+
+  const status = document.getElementById('importGuestStatus');
+  const preview = document.getElementById('importGuestPreview');
+  if (status) status.innerHTML = '<span class="text-xs text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-1"></i>Dosya okunuyor…</span>';
+  if (preview) preview.innerHTML = '';
+
+  try {
+    await loadExportLibrary('xlsx');
+  } catch (e) {
+    if (status) status.innerHTML = `<span class="text-xs text-rose-600">${escapeHtml(e.message)}</span>`;
+    return;
+  }
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const workbook = window.XLSX.read(buffer, { type: 'array', cellDates: false, raw: false });
+    const firstSheet = workbook.SheetNames[0];
+    if (!firstSheet) throw new Error('Dosyada sayfa bulunamadı.');
+    const rows = window.XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { header: 1, blankrows: false, defval: '' });
+    if (!rows || rows.length === 0) throw new Error('Dosyada veri bulunamadı.');
+
+    const guests = parseGuestRows(rows);
+    window.__pendingGuestImport = guests;
+    renderGuestImportPreview(guests);
+
+    if (status) {
+      status.innerHTML = guests.length
+        ? `<span class="text-xs text-emerald-700 font-medium"><i class="fa-solid fa-circle-check mr-1"></i>${guests.length} misafir bulundu. Listeyi kontrol edip yükleyin.</span>`
+        : '<span class="text-xs text-rose-600">Geçerli misafir satırı bulunamadı. En az "Ad Soyad" sütunu dolu olmalıdır.</span>';
+    }
+  } catch (e) {
+    window.__pendingGuestImport = [];
+    if (status) status.innerHTML = `<span class="text-xs text-rose-600">Dosya okunamadı: ${escapeHtml(e.message)}</span>`;
+    if (preview) preview.innerHTML = '';
+  }
+}
+
+/* Türkçe karakterleri yok sayarak metni anahtar arama için normalize eder. */
+function normalizeColumnKey(text) {
+  return String(text || '')
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ü/g, 'u')
+    .replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/* Başlık metninden hangi bilgi türü olduğunu tahmin eder. */
+function guessColumnType(header) {
+  const key = normalizeColumnKey(header);
+  if (!key) return null;
+  if (key.includes('tc') || /(kimlik|tckn|identity)/.test(key)) return 'tc';
+  if (/(telefon|tel|phone|gsm|cep|iletisim|mobile)/.test(key)) return 'phone';
+  if (/(otobus|otob|bus|arac|servis|sefer|plaka)/.test(key)) return 'bus';
+  if (/(adsoyad|adisim|isimsoyisim|adisoyisim|tamad|fullname|name|adsoy|ad|isim|soyad|soyisim)/.test(key)) return 'name';
+  return null;
+}
+
+/* SheetJS'in dizi dizisini misafir nesnelerine dönüştürür.
+   Önce başlık satırından sütunları otomatik eşleştirir; bulamazsa
+   sırayla [Ad Soyad, TC, Telefon, Otobüs] kabul eder. */
+function parseGuestRows(rows) {
+  const headerRow = rows[0].map(cell => String(cell === null || cell === undefined ? '' : cell).trim());
+  const mapping = { name: -1, tc: -1, phone: -1, bus: -1 };
+
+  headerRow.forEach((header, index) => {
+    const type = guessColumnType(header);
+    if (type && mapping[type] === -1) mapping[type] = index;
+  });
+
+  /* Başlık tanınmadıysa ilk satırı da veri kabul et ve pozisyonel eşle */
+  const dataRows = mapping.name === -1 ? rows : rows.slice(1);
+  if (mapping.name === -1) {
+    mapping.name = 0;
+    mapping.tc = mapping.tc === -1 ? 1 : mapping.tc;
+    mapping.phone = mapping.phone === -1 ? 2 : mapping.phone;
+    mapping.bus = mapping.bus === -1 ? 3 : mapping.bus;
+  }
+
+  /* "Ad" ve "Soyad" ayrı sütunlarsa soyad sütununun indeksini bul */
+  let surnameIndex = -1;
+  headerRow.forEach((header, index) => {
+    const key = normalizeColumnKey(header).replace(/[^a-z]/g, '');
+    if (['soyad', 'soyisim'].includes(key)) surnameIndex = index;
+  });
+
+  const guests = [];
+  dataRows.forEach(row => {
+    const pick = idx => (idx >= 0 && row[idx] !== null && row[idx] !== undefined)
+      ? String(row[idx]).trim()
+      : '';
+
+    let name = pick(mapping.name);
+    if (!name) return; /* isimsiz satırları atla */
+    if (surnameIndex !== -1) name = [name, pick(surnameIndex)].filter(Boolean).join(' ');
+
+    guests.push({ name, tc: pick(mapping.tc), phone: pick(mapping.phone), busCode: pick(mapping.bus) });
+  });
+
+  return guests;
+}
+
+/* Yükleme öncesi önizleme tablosunu çizer. */
+function renderGuestImportPreview(guests) {
+  const container = document.getElementById('importGuestPreview');
+  const submitBtn = document.getElementById('confirmGuestImportBtn');
+  if (!container) return;
+
+  if (!guests.length) {
+    container.innerHTML = '';
+    if (submitBtn) submitBtn.disabled = true;
+    return;
+  }
+  if (submitBtn) submitBtn.disabled = false;
+
+  const limit = 12;
+  const visible = guests.slice(0, limit);
+  container.innerHTML = `
+    <div class="border border-slate-200 rounded-xl overflow-hidden">
+      <table class="w-full text-xs">
+        <thead class="bg-slate-100 text-slate-600">
+          <tr>
+            <th class="px-3 py-2 text-left font-semibold w-10">#</th>
+            <th class="px-3 py-2 text-left font-semibold">Ad Soyad</th>
+            <th class="px-3 py-2 text-left font-semibold">TC Kimlik</th>
+            <th class="px-3 py-2 text-left font-semibold">Telefon</th>
+            <th class="px-3 py-2 text-left font-semibold">Otobüs</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          ${visible.map((g, i) => `
+            <tr class="${i % 2 ? 'bg-slate-50/60' : 'bg-white'}">
+              <td class="px-3 py-2 text-slate-400">${i + 1}</td>
+              <td class="px-3 py-2 font-medium text-slate-800">${escapeHtml(g.name)}</td>
+              <td class="px-3 py-2 text-slate-600 tabular-nums">${escapeHtml(g.tc)}</td>
+              <td class="px-3 py-2 text-slate-600 tabular-nums">${escapeHtml(g.phone)}</td>
+              <td class="px-3 py-2 text-slate-600">${escapeHtml(g.busCode)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    ${guests.length > limit ? `<p class="text-[11px] text-slate-400 mt-1.5">…ve ${guests.length - limit} misafir daha. Tümü yüklenecek.</p>` : ''}`;
+}
+
+/* Onaylanan misafirleri API'ye gönderip bekleme listesine ekler. */
+async function confirmGuestImport() {
+  const guests = Array.isArray(window.__pendingGuestImport) ? window.__pendingGuestImport : [];
+  if (!guests.length) { showToast('Yüklenecek misafir yok. Önce bir Excel dosyası seçin.', 'error'); return; }
+
+  const autoAssign = !!(document.getElementById('importAutoAssign') && document.getElementById('importAutoAssign').checked);
+  const btn = document.getElementById('confirmGuestImportBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Yükleniyor…'; }
+
+  const d = await apiCall('import_guests', { guests, autoAssign });
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i>Bekleyenler Listesine Ekle'; }
+
+  if (d) {
+    closeModal('guestImportModal');
+    window.__pendingGuestImport = [];
+    const status = document.getElementById('importGuestStatus');
+    const preview = document.getElementById('importGuestPreview');
+    if (status) status.innerHTML = '';
+    if (preview) preview.innerHTML = '';
+    renderAll();
+    showToast(d.message, 'success');
+    if (waitingList.length > 0) openModal('waitingListModal');
+  }
+}
+
 async function handleCreateRoom(event) {
   event.preventDefault();
   const payload = {
@@ -568,17 +757,34 @@ function renderWaitingList() {
 
   container.innerHTML = waitingList.map(f => `
     <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
-      <div>
-        <div class="flex items-center gap-2">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2 flex-wrap">
           <span class="font-bold text-slate-800 text-sm">${escapeHtml(f.title)}</span>
           <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">${f.count} Kişi</span>
           ${f.needsRamp ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">♿ Rampalı İstiyor</span>' : ''}
         </div>
-        <p class="text-xs text-slate-500 mt-1 truncate max-w-md">${f.names && f.names.length > 0 ? escapeHtml(f.names.join(', ')) : 'İsim girilmedi'}</p>
+        ${renderWaitingMemberDetails(f)}
         ${f.notes ? `<p class="text-[11px] text-slate-400 mt-0.5 italic"><i class="fa-solid fa-note-sticky mr-1"></i>${escapeHtml(f.notes)}</p>` : ''}
       </div>
-      <button onclick="deleteFromWaitingList(${f.id})" class="text-rose-500 hover:text-rose-700 p-2 rounded-lg hover:bg-rose-50 text-xs transition" title="Bekleme Listesinden Sil"><i class="fa-solid fa-trash"></i></button>
+      <button onclick="deleteFromWaitingList(${f.id})" class="shrink-0 text-rose-500 hover:text-rose-700 p-2 rounded-lg hover:bg-rose-50 text-xs transition" title="Bekleme Listesinden Sil"><i class="fa-solid fa-trash"></i></button>
     </div>`).join('');
+}
+
+/* Bekleyen grubun üyelerini (varsa TC/telefon ile) listeler. */
+function renderWaitingMemberDetails(f) {
+  const members = (f.members && f.members.length) ? f.members : [];
+  if (members.length === 0) {
+    const names = (f.names && f.names.length) ? f.names : [];
+    if (names.length === 0) return '<p class="text-xs text-slate-400 mt-1 truncate max-w-md">İsim girilmedi</p>';
+    return `<p class="text-xs text-slate-500 mt-1 truncate max-w-md">${escapeHtml(names.join(', '))}</p>`;
+  }
+  return `<div class="mt-1.5 space-y-1">${members.map(m => `
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600">
+      <span class="font-medium text-slate-700">${escapeHtml(m.name)}</span>
+      ${m.tc ? `<span class="inline-flex items-center gap-1 text-slate-500"><i class="fa-solid fa-id-card text-[10px] text-slate-400"></i>${escapeHtml(m.tc)}</span>` : ''}
+      ${m.phone ? `<span class="inline-flex items-center gap-1 text-slate-500"><i class="fa-solid fa-phone text-[10px] text-slate-400"></i>${escapeHtml(m.phone)}</span>` : ''}
+      ${m.busCode ? `<span class="inline-flex items-center gap-1 text-slate-500"><i class="fa-solid fa-bus text-[10px] text-slate-400"></i>${escapeHtml(m.busCode)}</span>` : ''}
+    </div>`).join('')}</div>`;
 }
 
 async function deleteFromWaitingList(waitId) {

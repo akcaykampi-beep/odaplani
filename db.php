@@ -200,11 +200,19 @@ function createSchema(PDO $pdo): void
             id         INT AUTO_INCREMENT PRIMARY KEY,
             waiting_id INT NOT NULL,
             name       VARCHAR(191) NOT NULL,
+            tc         VARCHAR(20) DEFAULT NULL,
+            phone      VARCHAR(30) DEFAULT NULL,
+            bus_code   VARCHAR(40) DEFAULT NULL,
             sort       INT NOT NULL DEFAULT 0,
             CONSTRAINT fk_wm_waiting FOREIGN KEY (waiting_id)
                 REFERENCES waiting_list(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci
     ");
+
+    // Mevcut (eski) kurulumlar için bekleyen misafir sütunlarını güvenle ekle (migration)
+    ensureColumn($pdo, 'waiting_members', 'tc',       "ALTER TABLE waiting_members ADD COLUMN tc VARCHAR(20) DEFAULT NULL AFTER name");
+    ensureColumn($pdo, 'waiting_members', 'phone',    "ALTER TABLE waiting_members ADD COLUMN phone VARCHAR(30) DEFAULT NULL AFTER tc");
+    ensureColumn($pdo, 'waiting_members', 'bus_code', "ALTER TABLE waiting_members ADD COLUMN bus_code VARCHAR(40) DEFAULT NULL AFTER phone");
 }
 
 function seedIfEmpty(PDO $pdo): void

@@ -39,6 +39,7 @@ uygulaması **PHP + MySQL veritabanı** ile ekle / sil / güncelle destekli hale
 - **Çok Biçimli Rapor** — tüm biçimlerde (Excel, Word, PDF, JPG) yalnızca **sıra no, TC, ad soyad, telefon no ve geldiği otobüs** sütunlarını listeler; PDF ve Word çıktıları misafirleri geliş otobüsüne göre (A‑1/A‑2/A‑3) gruplandırır.
 - **Oda Sil** — seçili oda kartındaki "Odayı Sil" ile kalıcı olarak silinir (misafirleri de otomatik silinir).
 - **Aile/Grup Ekle** — bekleme listesine ekler, isteğe bağlı otomatik yerleştirir.
+- **Excel'den Misafir Yükleme** — başlıktaki **Excel Yükle** düğmesiyle `.xlsx`/`.xls`/`.csv` bir misafir listesi seçilir; sütunlar otomatik algılanır (Ad Soyad, TC, Telefon ve isteğe bağlı Otobüs) ve onaydan sonra her satır **bekleme listesine** kaydedilir. Başlık satırı yoksa sütunlar sıraya göre alınır; "Ad" ve "Soyad" ayrı sütunlarsa otomatik birleştirilir. "Hemen yerleştirmeyi dene" seçilirse boş oda bulunan misafirler odalarına yerleştirilir.
 - **Bekleme Listesinden Sil** — çöp kutusu simgesi.
 - **Odaya Ata / Boşalt** — bekleme listesinden odaya atama, odayı boşaltma.
 - **Akıllı Yerleştir** — bekleyen tüm aileleri en uygun (Best-Fit + rampa öncelikli) odalara sunucuda yerleştirir.
@@ -53,5 +54,6 @@ uygulaması **PHP + MySQL veritabanı** ile ekle / sil / güncelle destekli hale
 - Oda ve misafir değişiklikleri `save_room` işlemiyle tek veritabanı transaction'ı içinde kaydedilir.
 - Misafir modelindeki `notes` alanı (veritabanında `room_guests.note`) en fazla 255 karakterlik sağlık durumu veya genel açıklama saklar.
 - Misafir telefonları `phone` alanında saklanır; mevcut veritabanlarına sütun otomatik olarak eklenir.
+- Bekleme listesindeki misafirlerin de TC/telefon/otobüs bilgisi `waiting_members` tablosunda saklanır (`tc`, `phone`, `bus_code`); mevcut veritabanlarına bu sütunlar otomatik olarak eklenir. Böylece Excel'den yüklenen bilgiler odaya yerleşince raporlarda kaybolmaz.
 - Dışa aktarma kitaplıkları yalnızca ihtiyaç anında yüklenir: SheetJS (Excel), docx (Word), html2canvas (JPG/PDF) ve jsPDF (PDF).
 - Tablolar: `rooms`, `room_guests`, `waiting_list`, `waiting_members` (foreign key + ON DELETE CASCADE).

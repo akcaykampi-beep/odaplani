@@ -74,17 +74,25 @@ function fullState(PDO $pdo): array
     $waits = $pdo->query('SELECT * FROM waiting_list ORDER BY id ASC')->fetchAll();
     if ($waits === false) $waits = [];
     $namesByWait = [];
-    $wstmt = $pdo->query('SELECT waiting_id, name FROM waiting_members ORDER BY sort ASC, id ASC');
+    $membersByWait = [];
+    $wstmt = $pdo->query('SELECT waiting_id, name, tc, phone, bus_code FROM waiting_members ORDER BY sort ASC, id ASC');
     foreach ($wstmt as $w) {
         $namesByWait[$w['waiting_id']][] = $w['name'];
+        $membersByWait[$w['waiting_id']][] = [
+            'name'    => $w['name'],
+            'tc'      => $w['tc'] ?? '',
+            'phone'   => $w['phone'] ?? '',
+            'busCode' => $w['bus_code'] ?? '',
+        ];
     }
 
-    $waitOut = array_map(function ($w) use ($namesByWait) {
+    $waitOut = array_map(function ($w) use ($namesByWait, $membersByWait) {
         return [
             'id'        => (int) $w['id'],
             'title'     => $w['title'],
             'count'     => (int) $w['member_count'],
             'names'     => $namesByWait[$w['id']] ?? [],
+            'members'   => $membersByWait[$w['id']] ?? [],
             'needsRamp' => (bool) $w['needs_ramp'],
             'notes'     => $w['notes'] ?? '',
         ];
@@ -160,6 +168,79 @@ function getRoom(PDO $pdo, int $id): ?array
     $s->execute([$id]);
     $r = $s->fetch();
     return $r ?: null;
+}
+
+/**
+ * Bir bekleme kaydındaki üyeleri [{name, tc, phone, busCode}] olarak çeker.
+ * $names true verilirse eski istemciler için düz isim listesi döner.
+ */
+function fetchWaitingMembers(PDO $pdo, int $waitId, bool $names = false): array
+{
+    $ms = $pdo->prepare('SELECT name, tc, phone, bus_code FROM waiting_members WHERE waiting_id = ? ORDER BY sort ASC, id ASC');
+    $ms->execute([$waitId]);
+    $rows = $ms->fetchAll();
+    if ($names) return array_column($rows, 'name');
+    return array_map(function ($m) {
+        $row = [
+            'name'  => $m['name'],
+            'tc'    => $m['tc'] ?? '',
+            'phone' => $m['phone'] ?? '',
+            // eski istemciler için geriye dönük uyumluluk
+            'notes' => '',
+            'note'  => '',
+        ];
+        // Otobüs kodu boşsa anahtarı koyma: setRoomGuests oda varsayılanı (A-1/2/3) atar.
+        $bus = trim((string) ($m['bus_code'] ?? ''));
+        if ($bus !== '') $row['busCode'] = $bus;
+        return $row;
+    }, $rows);
+}
+
+/**
+ * Bekleme listesine bir kayıt ekler ve üyelerini yazar.
+ * $members öğeleri düz metin (isim) veya ['name','tc','phone','busCode'] olabilir.
+ * Oluşan bekleme kaydının id'sini döndürür.
+ */
+function insertWaitingGroup(PDO $pdo, string $title, int $count, bool $needsRamp, string $notes, array $members): int
+{
+    if (!is_array($members)) $members = [];
+    $clean = [];
+    foreach ($members as $m) {
+        if (is_array($m)) {
+            $name = trim((string) ($m['name'] ?? ''));
+            if ($name === '') continue;
+            $clean[] = [
+                'name'    => $name,
+                'tc'      => trim((string) ($m['tc'] ?? '')),
+                'phone'   => trim((string) ($m['phone'] ?? '')),
+                'busCode' => trim((string) ($m['busCode'] ?? $m['bus'] ?? '')),
+            ];
+        } else {
+            $name = trim((string) $m);
+            if ($name === '') continue;
+            $clean[] = ['name' => $name, 'tc' => '', 'phone' => '', 'busCode' => ''];
+        }
+    }
+    // En az 1 üye adı varsa üye sayısını gerçek sayıya eşitle
+    if (count($clean) > 0) $count = max($count, count($clean));
+
+    $pdo->prepare('INSERT INTO waiting_list (title, member_count, needs_ramp, notes) VALUES (?,?,?,?)')
+        ->execute([$title, $count, $needsRamp ? 1 : 0, $notes]);
+    $wid = (int) $pdo->lastInsertId();
+
+    $ins = $pdo->prepare('INSERT INTO waiting_members (waiting_id, name, tc, phone, bus_code, sort) VALUES (?,?,?,?,?,?)');
+    $sort = 0;
+    foreach ($clean as $m) {
+        $ins->execute([
+            $wid,
+            $m['name'],
+            $m['tc']      !== '' ? $m['tc']      : null,
+            $m['phone']   !== '' ? $m['phone']   : null,
+            $m['busCode'] !== '' ? $m['busCode'] : null,
+            $sort++,
+        ]);
+    }
+    return $wid;
 }
 
 /* ---------- Yönlendirme ---------- */
@@ -390,10 +471,14 @@ try {
             $auto  = !empty($req['autoAssign']);
             if ($title === '') fail('Aile/grup başlığı zorunludur.');
 
+            // $names artık düz metin veya {name, tc, phone, busCode} nesnesi içerebilir.
             if (!is_array($names)) $names = [];
-            $names = array_values(array_filter(array_map('trim', $names), fn($s) => $s !== ''));
-            while (count($names) < $count) {
-                $names[] = $title . ' Üyesi ' . (count($names) + 1);
+            $filled = array_values(array_filter($names, function ($n) {
+                $nm = is_array($n) ? trim((string) ($n['name'] ?? '')) : trim((string) $n);
+                return $nm !== '';
+            }));
+            while (count($filled) < $count) {
+                $filled[] = ['name' => $title . ' Üyesi ' . (count($filled) + 1)];
             }
 
             // Otomatik yerleştirme denemesi
@@ -402,7 +487,7 @@ try {
                 if ($roomId !== null) {
                     $pdo->prepare('UPDATE rooms SET guest_group=?, notes=? WHERE id=?')
                         ->execute([$title, $notes, $roomId]);
-                    setRoomGuests($pdo, $roomId, $names);
+                    setRoomGuests($pdo, $roomId, $filled);
                     $r = getRoom($pdo, $roomId);
                     okState($pdo, "Otomatik Yerleşim: $title Oda {$r['no']} ({$r['block']}) içine yerleştirildi!");
                     break;
@@ -410,14 +495,66 @@ try {
             }
 
             // Bekleme listesine ekle
-            $pdo->prepare('INSERT INTO waiting_list (title, member_count, needs_ramp, notes) VALUES (?,?,?,?)')
-                ->execute([$title, $count, $ramp, $notes]);
-            $wid = (int) $pdo->lastInsertId();
-            $ins = $pdo->prepare('INSERT INTO waiting_members (waiting_id, name, sort) VALUES (?,?,?)');
-            $sort = 0;
-            foreach ($names as $n) $ins->execute([$wid, $n, $sort++]);
+            insertWaitingGroup($pdo, $title, $count, (bool) $ramp, $notes, $filled);
 
             okState($pdo, ($auto ? "Uygun boş oda bulunamadı, " : '') . "$title bekleme listesine eklendi.");
+            break;
+        }
+
+        /* === EXCEL'DEN MİSAFİR YÜKLE (topluca bekleme listesine ekle) ===
+         * $req['guests']: [{name, tc, phone, busCode}, ...]  — frontend Excel'i parse edip gönderir. */
+        case 'import_guests': {
+            $rows = $req['guests'] ?? [];
+            $auto = !empty($req['autoAssign']);
+            if (!is_array($rows)) $rows = [];
+
+            $valid = [];
+            foreach ($rows as $g) {
+                if (!is_array($g)) continue;
+                $name = trim((string) ($g['name'] ?? ''));
+                if ($name === '') continue;
+                // TC yalnızca rakamlardan oluşsun (başta/sonda boşluk ve fazlalık atılsın)
+                $tc = preg_replace('/\D/', '', (string) ($g['tc'] ?? ''));
+                if ($tc !== '' && strlen($tc) > 11) $tc = substr($tc, 0, 11);
+                $phone = trim((string) ($g['phone'] ?? ''));
+                $bus = trim((string) ($g['busCode'] ?? $g['bus'] ?? ''));
+                $record = ['name' => $name, 'tc' => $tc, 'phone' => $phone];
+                /* Otobüs kodu yoksa anahtarı koyma; setRoomGuests oda varsayılanı (A-1/2/3) atar. */
+                if ($bus !== '') $record['busCode'] = $bus;
+                $valid[] = $record;
+            }
+            if (count($valid) === 0) {
+                fail('Dosyada geçerli misafir satırı bulunamadı. En az "Ad Soyad" sütunu dolu olmalıdır.');
+            }
+
+            $placed = 0;
+            $waiting = 0;
+            $pdo->beginTransaction();
+            try {
+                foreach ($valid as $g) {
+                    // İsteğe bağlı: boş oda varsa hemen yerleştir, yoksa bekleme listesine at
+                    if ($auto) {
+                        $roomId = findBestRoom($pdo, 1, false);
+                        if ($roomId !== null) {
+                            $pdo->prepare('UPDATE rooms SET guest_group=? WHERE id=?')
+                                ->execute([$g['name'], $roomId]);
+                            setRoomGuests($pdo, $roomId, [$g]);
+                            $placed++;
+                            continue;
+                        }
+                    }
+                    insertWaitingGroup($pdo, $g['name'], 1, false, '', [$g]);
+                    $waiting++;
+                }
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
+
+            $msg = "$waiting misafir bekleme listesine eklendi.";
+            if ($placed > 0) $msg = "$placed misafir uygun odalara yerleştirildi, " . $msg;
+            okState($pdo, $msg);
             break;
         }
 
@@ -441,14 +578,12 @@ try {
             $w = $ws->fetch();
             if (!$w) fail('Bekleme kaydı bulunamadı.', 404);
 
-            $ms = $pdo->prepare('SELECT name FROM waiting_members WHERE waiting_id = ? ORDER BY sort ASC, id ASC');
-            $ms->execute([$waitId]);
-            $names = array_column($ms->fetchAll(), 'name');
-            if (empty($names)) $names = [$w['title']];
+            $members = fetchWaitingMembers($pdo, $waitId);
+            if (empty($members)) $members = [['name' => $w['title'], 'tc' => '', 'phone' => '', 'busCode' => '']];
 
             $pdo->prepare('UPDATE rooms SET guest_group=?, notes=? WHERE id=?')
                 ->execute([$w['title'], $w['notes'], $roomId]);
-            setRoomGuests($pdo, $roomId, $names);
+            setRoomGuests($pdo, $roomId, $members);
             $pdo->prepare('DELETE FROM waiting_list WHERE id = ?')->execute([$waitId]);
 
             okState($pdo, "{$w['title']} Oda {$room['no']}'ye yerleştirildi.");
@@ -473,14 +608,12 @@ try {
                 $roomId = findBestRoom($pdo, (int) $w['member_count'], (bool) $w['needs_ramp']);
                 if ($roomId === null) { $unassigned++; continue; }
 
-                $ms = $pdo->prepare('SELECT name FROM waiting_members WHERE waiting_id = ? ORDER BY sort ASC, id ASC');
-                $ms->execute([$w['id']]);
-                $names = array_column($ms->fetchAll(), 'name');
-                if (empty($names)) $names = [$w['title']];
+                $members = fetchWaitingMembers($pdo, (int) $w['id']);
+                if (empty($members)) $members = [['name' => $w['title'], 'tc' => '', 'phone' => '', 'busCode' => '']];
 
                 $pdo->prepare('UPDATE rooms SET guest_group=?, notes=? WHERE id=?')
                     ->execute([$w['title'], $w['notes'], $roomId]);
-                setRoomGuests($pdo, $roomId, $names);
+                setRoomGuests($pdo, $roomId, $members);
                 $pdo->prepare('DELETE FROM waiting_list WHERE id = ?')->execute([$w['id']]);
                 $placed++;
             }
@@ -494,17 +627,19 @@ try {
         case 'clear_allocations': {
             $rooms = $pdo->query("SELECT * FROM rooms WHERE is_staff = 0 AND guest_group IS NOT NULL AND guest_group <> ''")->fetchAll();
             foreach ($rooms as $r) {
-                $ms = $pdo->prepare('SELECT name FROM room_guests WHERE room_id = ? ORDER BY sort ASC, id ASC');
+                $ms = $pdo->prepare('SELECT name, tc, phone, bus_code FROM room_guests WHERE room_id = ? ORDER BY sort ASC, id ASC');
                 $ms->execute([$r['id']]);
-                $names = array_column($ms->fetchAll(), 'name');
-                $cnt = count($names) ?: (int) $r['capacity'];
+                $members = array_map(function ($g) {
+                    return [
+                        'name'    => $g['name'],
+                        'tc'      => $g['tc'] ?? '',
+                        'phone'   => $g['phone'] ?? '',
+                        'busCode' => $g['bus_code'] ?? '',
+                    ];
+                }, $ms->fetchAll());
+                $cnt = count($members) ?: (int) $r['capacity'];
 
-                $pdo->prepare('INSERT INTO waiting_list (title, member_count, needs_ramp, notes) VALUES (?,?,?,?)')
-                    ->execute([$r['guest_group'], $cnt, (int) $r['has_ramp'], $r['notes']]);
-                $wid = (int) $pdo->lastInsertId();
-                $ins = $pdo->prepare('INSERT INTO waiting_members (waiting_id, name, sort) VALUES (?,?,?)');
-                $sort = 0;
-                foreach ($names as $n) $ins->execute([$wid, $n, $sort++]);
+                insertWaitingGroup($pdo, $r['guest_group'], $cnt, (bool) $r['has_ramp'], $r['notes'], $members);
 
                 $pdo->prepare('UPDATE rooms SET guest_group=NULL, notes=? WHERE id=?')->execute(['', $r['id']]);
                 setRoomGuests($pdo, (int) $r['id'], []);

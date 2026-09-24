@@ -135,6 +135,11 @@
       </div>
 
       <div class="flex items-center gap-2 sm:gap-3">
+        <button onclick="openGuestImportDialog()" class="inline-flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-lg border border-emerald-300 text-emerald-700 bg-white hover:bg-emerald-50 transition shadow-sm hover:shadow active:scale-95" title="Excel'den toplu misafir yükle (TC, Ad Soyad, Telefon)">
+          <i class="fa-solid fa-file-excel"></i>
+          <span class="hidden sm:inline">Excel Yükle</span>
+        </button>
+        <input type="file" id="guestExcelInput" accept=".xlsx,.xls,.csv" onchange="handleGuestFileSelect(event)" class="hidden" />
         <button onclick="openModal('addFamilyModal')" class="inline-flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition shadow-sm hover:shadow active:scale-95">
           <i class="fa-solid fa-user-plus"></i>
           <span class="hidden sm:inline">Yeni Aile / Grup Girişi</span>
@@ -319,6 +324,44 @@
           </div>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Excel'den Misafir Yükleme Modalı -->
+  <div id="guestImportModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-white rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden border border-slate-100 max-h-[88vh] flex flex-col">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center"><i class="fa-solid fa-file-excel"></i></div>
+          <div>
+            <h3 class="font-bold text-slate-800">Excel'den Misafir Yükle</h3>
+            <p class="text-xs text-slate-500">Sütunlar otomatik algılanır; her satır bekleme listesine eklenir</p>
+          </div>
+        </div>
+        <button onclick="closeModal('guestImportModal')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <div class="p-6 space-y-4 text-sm overflow-y-auto flex-1">
+        <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800">
+          <p class="font-semibold mb-1">Beklenen sütunlar</p>
+          <p>Sırasıyla <strong>Ad Soyad</strong>, <strong>TC</strong>, <strong>Telefon</strong> ve (isteğe bağlı) <strong>Otobüs</strong>. Başlıklar <em>"Ad Soyad", "TC", "Telefon", "Geldiği Otobüs"</em> gibi yazılmışsa otomatik algılanır; başlık yoksa sıraya göre alınır. Ad ve Soyad ayrı sütunlarsa otomatik birleştirilir.</p>
+        </div>
+        <button onclick="openGuestImportDialog()" class="w-full px-4 py-3 rounded-xl border-2 border-dashed border-emerald-300 text-emerald-700 hover:bg-emerald-50 transition font-semibold flex items-center justify-center gap-2">
+          <i class="fa-solid fa-cloud-arrow-up"></i> Excel / CSV Dosyası Seç
+        </button>
+        <div id="importGuestStatus"></div>
+        <div id="importGuestPreview" class="max-h-[34vh] overflow-y-auto"></div>
+        <label class="inline-flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+          <input type="checkbox" id="importAutoAssign" class="rounded text-emerald-600" />
+          <span>Boş oda varsa misafirleri hemen odalara yerleştirmeyi dene (boşta kalanlar bekleme listesine eklenir)</span>
+        </label>
+      </div>
+      <div class="px-6 py-3 bg-slate-50 border-t flex items-center justify-between">
+        <span class="text-[11px] text-slate-400">Yüklemeden önce listeyi kontrol edebilirsiniz.</span>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="closeModal('guestImportModal')" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition font-medium">İptal</button>
+          <button type="button" id="confirmGuestImportBtn" onclick="confirmGuestImport()" disabled class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"><i class="fa-solid fa-check mr-1"></i>Bekleyenler Listesine Ekle</button>
+        </div>
+      </div>
     </div>
   </div>
 

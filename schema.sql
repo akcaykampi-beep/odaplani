@@ -50,6 +50,9 @@ CREATE TABLE IF NOT EXISTS waiting_members (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   waiting_id INT NOT NULL,
   name       VARCHAR(191) NOT NULL,
+  tc         VARCHAR(20) DEFAULT NULL,
+  phone      VARCHAR(30) DEFAULT NULL,
+  bus_code   VARCHAR(40) DEFAULT NULL,
   sort       INT NOT NULL DEFAULT 0,
   CONSTRAINT fk_wm_waiting FOREIGN KEY (waiting_id)
       REFERENCES waiting_list(id) ON DELETE CASCADE
