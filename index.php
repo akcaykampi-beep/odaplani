@@ -162,7 +162,7 @@
               </button>
               <button type="button" onclick="downloadReport('xlsx', this)" class="export-format-button w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-emerald-50 text-left transition" role="menuitem">
                 <span class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center"><i class="fa-solid fa-file-excel"></i></span>
-                <span><strong class="block text-xs text-slate-800">Excel (.xlsx)</strong><span class="text-[10px] text-slate-500">Filtrelenebilir yatak tablosu</span></span>
+                <span><strong class="block text-xs text-slate-800">Excel (.xlsx)</strong><span class="text-[10px] text-slate-500">Filtrelenebilir misafir listesi</span></span>
               </button>
               <button type="button" onclick="downloadReport('docx', this)" class="export-format-button w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-blue-50 text-left transition" role="menuitem">
                 <span class="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center"><i class="fa-solid fa-file-word"></i></span>
